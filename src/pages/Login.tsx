@@ -14,6 +14,9 @@ import {
 } from '@/components/ui/card';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
+const TEST_USER_EMAIL = import.meta.env.VITE_TEST_USER_EMAIL ?? 'test@optifact.local';
+const TEST_USER_PASSWORD = import.meta.env.VITE_TEST_USER_PASSWORD ?? 'password123';
+
 export default function Login() {
   const { session, signIn, signUp } = useAuth();
   const navigate = useNavigate();
@@ -41,6 +44,21 @@ export default function Login() {
     }
     if (mode === 'signin') navigate('/');
     else setError('Check your email to confirm your account, then sign in.');
+  }
+
+  async function handleUseTestAccount() {
+    setError(null);
+    setMode('signin');
+    setEmail(TEST_USER_EMAIL);
+    setPassword(TEST_USER_PASSWORD);
+    setSubmitting(true);
+    const { error } = await signIn(TEST_USER_EMAIL, TEST_USER_PASSWORD);
+    setSubmitting(false);
+    if (error) {
+      setError(error);
+      return;
+    }
+    navigate('/');
   }
 
   return (
@@ -104,6 +122,15 @@ export default function Login() {
             )}
             <Button type="submit" className="w-full" disabled={submitting}>
               {submitting ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              disabled={submitting}
+              onClick={handleUseTestAccount}
+            >
+              Use test account
             </Button>
           </form>
           <div className="mt-4 text-center text-sm text-muted-foreground">
