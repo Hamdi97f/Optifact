@@ -1,0 +1,138 @@
+import { useState, type FormEvent } from 'react';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { Sparkles } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { isSupabaseConfigured } from '@/lib/supabase';
+
+export default function Login() {
+  const { session, signIn, signUp } = useAuth();
+  const navigate = useNavigate();
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  if (session) return <Navigate to="/" replace />;
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
+    const { error } =
+      mode === 'signin'
+        ? await signIn(email, password)
+        : await signUp(email, password, companyName || 'My Company');
+    setSubmitting(false);
+    if (error) {
+      setError(error);
+      return;
+    }
+    if (mode === 'signin') navigate('/');
+    else setError('Check your email to confirm your account, then sign in.');
+  }
+
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Sparkles className="h-5 w-5" />
+          </div>
+          <CardTitle>Welcome to Optifact</CardTitle>
+          <CardDescription>
+            {mode === 'signin' ? 'Sign in to your workspace.' : 'Create your company workspace.'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!isSupabaseConfigured && (
+            <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+              Supabase is not configured. Copy <code>.env.example</code> to <code>.env</code> and
+              set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>.
+            </div>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {mode === 'signup' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="company">Company name</Label>
+                <Input
+                  id="company"
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="Acme SARL"
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                required
+                minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            {error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-xs text-destructive">
+                {error}
+              </div>
+            )}
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+            </Button>
+          </form>
+          <div className="mt-4 text-center text-sm text-muted-foreground">
+            {mode === 'signin' ? (
+              <>
+                No account?{' '}
+                <button
+                  type="button"
+                  onClick={() => setMode('signup')}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Create one
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => setMode('signin')}
+                  className="font-medium text-primary hover:underline"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
