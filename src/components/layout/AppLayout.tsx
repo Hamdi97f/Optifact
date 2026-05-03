@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { Menu, Sparkles, X } from 'lucide-react';
+import { Menu, Sparkles } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { useI18n } from '@/lib/i18n';
 import { useSettings } from '@/hooks/useSettings';
@@ -80,10 +80,6 @@ export function AppLayout() {
               {brandName}
             </div>
           </div>
-          {/* Reserved for future actions; X icon imported for parity with Sidebar */}
-          <span className="hidden">
-            <X className="h-4 w-4" />
-          </span>
         </header>
 
         <main className="flex-1 overflow-x-hidden">

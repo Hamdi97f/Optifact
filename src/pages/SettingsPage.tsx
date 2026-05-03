@@ -309,7 +309,7 @@ function CompanyTab({
             {value.logo_data_url ? (
               <img
                 src={value.logo_data_url}
-                alt=""
+                alt={value.legal_name || value.trade_name || t('settings.company.logo')}
                 className="h-16 w-16 rounded border bg-white object-contain p-1"
               />
             ) : (
