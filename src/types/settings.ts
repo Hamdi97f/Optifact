@@ -21,7 +21,27 @@ export type SymbolPosition = 'prefix' | 'suffix';
 
 export type ResetCycle = 'never' | 'yearly' | 'monthly';
 
-export type TaxType = 'vat' | 'withholding' | 'stamp' | 'other';
+export type TaxType = 'vat' | 'withholding' | 'stamp' | 'other' | 'combined';
+
+/** How a single component of a `combined` tax computes its base. */
+export type TaxComponentBase = 'HT' | 'HT_PLUS_TAXES';
+
+/**
+ * One sub-tax inside a combined tax.
+ *
+ * - `tax_id` references another (non-combined) `TaxRate` in `TaxSettings.rates`.
+ * - When `base === 'HT'`, the component is computed on the document HT.
+ * - When `base === 'HT_PLUS_TAXES'`, the component is computed on
+ *   `HT + Σ(amount of each tax id listed in base_tax_ids)`. Each id MUST also
+ *   be a component of the parent combined tax (cycles are broken by falling
+ *   back to HT — see `computeTaxBreakdown` in `lib/tax.ts`).
+ */
+export interface TaxRateComponent {
+  tax_id: string;
+  base: TaxComponentBase;
+  /** Tax ids whose amounts are added to HT to form this component's base. */
+  base_tax_ids: string[];
+}
 
 export type UserRole = 'admin' | 'sales' | 'accountant' | 'viewer';
 
@@ -104,11 +124,21 @@ export type NumberingSettings = Record<NumberedDocType, NumberingSequence>;
 export interface TaxRate {
   id: string;
   name: string;
-  /** Percentage value, e.g. 19 for 19%. */
+  /**
+   * Percentage value, e.g. 19 for 19%.
+   * For `combined` taxes this is informational only — the actual amount is
+   * the sum of the component amounts (see `components`).
+   */
   rate: number;
   type: TaxType;
   /** Optional accounting code (e.g. 4366 for VAT in France/Tunisia). */
   account_code: string;
+  /**
+   * Components for a `combined` tax. Required when `type === 'combined'`,
+   * ignored otherwise. A combined tax may NOT reference another combined
+   * tax (kept flat to avoid recursion ambiguities).
+   */
+  components?: TaxRateComponent[];
 }
 
 export interface TaxSettings {

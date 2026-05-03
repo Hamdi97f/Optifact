@@ -43,6 +43,12 @@ export interface Entity {
   address: string | null;
   tax_id: string | null;
   email: string | null;
+  /**
+   * Tax rate ids this entity is exonerated from. When a document is created
+   * for this entity, any matching tax (or matching component of a combined
+   * tax) is automatically skipped from the totals.
+   */
+  tax_exemptions?: string[];
 }
 
 export interface DocItem {
