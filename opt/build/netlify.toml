@@ -1,0 +1,12 @@
+# Build from the repo root (this file lives in <repo>/opt/build/, so ../../ is the repo root).
+# Netlify's UI is configured with Base directory = /opt/build, so it cd's into this folder
+# before reading this config. We bounce back up to the actual project to install & build.
+[build]
+  command = "cd ../.. && npm ci && npm run build"
+  publish = "../../dist"
+
+# SPA fallback so client-side routes (react-router) work on refresh / direct navigation.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
