@@ -1,5 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { Package, Truck, Users, Wallet } from 'lucide-react';
+import { Truck } from 'lucide-react';
 import { AuthProvider } from '@/hooks/useAuth';
 import { SettingsProvider } from '@/hooks/useSettings';
 import { I18nProvider } from '@/lib/i18n';
@@ -10,6 +10,9 @@ import Login from '@/pages/Login';
 import { DocumentListPage } from '@/pages/DocumentListPage';
 import { DocumentCreatePage } from '@/pages/DocumentCreatePage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import ProductsPage from '@/pages/ProductsPage';
+import EntitiesPage from '@/pages/EntitiesPage';
+import PaymentsPage from '@/pages/PaymentsPage';
 import SettingsPage from '@/pages/SettingsPage';
 
 export default function App() {
@@ -110,33 +113,15 @@ export default function App() {
 
             <Route
               path="products"
-              element={
-                <PlaceholderPage
-                  title="Products"
-                  description="Catalog with stock and pricing."
-                  icon={Package}
-                />
-              }
+              element={<ProductsPage />}
             />
             <Route
               path="clients"
-              element={
-                <PlaceholderPage
-                  title="Clients & Suppliers"
-                  description="Manage business contacts."
-                  icon={Users}
-                />
-              }
+              element={<EntitiesPage />}
             />
             <Route
               path="payments"
-              element={
-                <PlaceholderPage
-                  title="Payments"
-                  description="Track invoice payments and outstanding balances."
-                  icon={Wallet}
-                />
-              }
+              element={<PaymentsPage />}
             />
             <Route
               path="settings"
