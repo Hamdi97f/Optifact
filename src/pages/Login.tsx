@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 import { Sparkles } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
+import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +20,7 @@ const TEST_USER_PASSWORD = import.meta.env.VITE_TEST_USER_PASSWORD ?? 'password1
 
 export default function Login() {
   const { session, signIn, signUp } = useAuth();
+  const { t } = useI18n();
   const navigate = useNavigate();
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -43,7 +45,7 @@ export default function Login() {
       return;
     }
     if (mode === 'signin') navigate('/');
-    else setError('Check your email to confirm your account, then sign in.');
+    else setError(t('login.confirm_email'));
   }
 
   async function handleUseTestAccount() {
@@ -73,11 +75,7 @@ export default function Login() {
       ({ error: signInError } = await signIn(TEST_USER_EMAIL, TEST_USER_PASSWORD));
       if (signInError) {
         setSubmitting(false);
-        setError(
-          'Test account was created but could not be signed in automatically. ' +
-            'If your gateway requires email confirmation, confirm the user, ' +
-            'then click "Use test account" again.',
-        );
+        setError(t('login.test_create_failed'));
         return;
       }
     } else if (signInError) {
@@ -97,32 +95,31 @@ export default function Login() {
           <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
             <Sparkles className="h-5 w-5" />
           </div>
-          <CardTitle>Welcome to Optifact</CardTitle>
+          <CardTitle>{t('login.welcome')}</CardTitle>
           <CardDescription>
-            {mode === 'signin' ? 'Sign in to your workspace.' : 'Create your company workspace.'}
+            {mode === 'signin' ? t('login.signin_desc') : t('login.signup_desc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           {!isApiConfigured && (
             <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-              The API gateway is not configured. Copy <code>.env.example</code> to <code>.env</code> and set
-              <code> VITE_API_GATEWAY_URL</code> and <code>VITE_API_GATEWAY_KEY</code>.
+              {t('login.api_warning')}
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
             {mode === 'signup' && (
               <div className="space-y-1.5">
-                <Label htmlFor="company">Company name</Label>
+                <Label htmlFor="company">{t('login.company_name')}</Label>
                 <Input
                   id="company"
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
-                  placeholder="Acme SARL"
+                  placeholder={t('login.company_placeholder')}
                 />
               </div>
             )}
             <div className="space-y-1.5">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t('common.email')}</Label>
               <Input
                 id="email"
                 type="email"
@@ -133,7 +130,7 @@ export default function Login() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t('login.password')}</Label>
               <Input
                 id="password"
                 type="password"
@@ -150,7 +147,11 @@ export default function Login() {
               </div>
             )}
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+              {submitting
+                ? t('common.please_wait')
+                : mode === 'signin'
+                  ? t('login.signin')
+                  : t('login.create_account')}
             </Button>
             <Button
               type="button"
@@ -159,30 +160,30 @@ export default function Login() {
               disabled={submitting}
               onClick={handleUseTestAccount}
             >
-              Use test account
+              {t('login.use_test')}
             </Button>
           </form>
           <div className="mt-4 text-center text-sm text-muted-foreground">
             {mode === 'signin' ? (
               <>
-                No account?{' '}
+                {t('login.no_account')}{' '}
                 <button
                   type="button"
                   onClick={() => setMode('signup')}
                   className="font-medium text-primary hover:underline"
                 >
-                  Create one
+                  {t('login.create_one')}
                 </button>
               </>
             ) : (
               <>
-                Already have an account?{' '}
+                {t('login.have_account')}{' '}
                 <button
                   type="button"
                   onClick={() => setMode('signin')}
                   className="font-medium text-primary hover:underline"
                 >
-                  Sign in
+                  {t('login.signin')}
                 </button>
               </>
             )}

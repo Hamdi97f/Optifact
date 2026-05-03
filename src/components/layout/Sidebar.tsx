@@ -10,6 +10,7 @@ import {
   LogOut,
   Settings,
   Sparkles,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
@@ -29,7 +30,22 @@ const NAV_ITEMS = [
   { to: '/settings', labelKey: 'nav.settings', icon: Settings },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  className?: string;
+  /** Called when a nav link is activated (used to close the mobile drawer). */
+  onNavigate?: () => void;
+  /** Called when the close button is clicked (mobile only). */
+  onClose?: () => void;
+  /** Show the close button (mobile drawer mode). */
+  showCloseButton?: boolean;
+}
+
+export function Sidebar({
+  className,
+  onNavigate,
+  onClose,
+  showCloseButton = false,
+}: SidebarProps) {
   const { signOut, user } = useAuth();
   const { t } = useI18n();
   const { settings } = useSettings();
@@ -37,13 +53,22 @@ export function Sidebar() {
 
   async function handleSignOut() {
     await signOut();
+    onNavigate?.();
     navigate('/login');
   }
 
   const brandName = settings.company.trade_name || settings.company.legal_name || 'Optifact';
 
   return (
-    <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-card">
+    <aside
+      className={cn(
+        'w-64 shrink-0 flex-col border-e bg-card',
+        // Default to flex; the parent decides visibility via className overrides
+        // (e.g. `hidden md:flex` for the persistent desktop sidebar).
+        'flex',
+        className,
+      )}
+    >
       <div className="flex h-16 items-center gap-2 border-b px-5">
         <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-primary text-primary-foreground">
           {settings.company.logo_data_url ? (
@@ -56,12 +81,22 @@ export function Sidebar() {
             <Sparkles className="h-5 w-5" />
           )}
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-semibold leading-tight" title={brandName}>
             {brandName}
           </div>
           <div className="text-xs text-muted-foreground">{t('app.tagline')}</div>
         </div>
+        {showCloseButton && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            aria-label={t('nav.close')}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+        )}
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
@@ -70,6 +105,7 @@ export function Sidebar() {
             key={to}
             to={to}
             end={end}
+            onClick={() => onNavigate?.()}
             className={({ isActive }) =>
               cn(
                 'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
@@ -86,8 +122,11 @@ export function Sidebar() {
       </nav>
 
       <div className="border-t p-3">
-        <div className="mb-2 truncate px-2 text-xs text-muted-foreground" title={user?.email ?? ''}>
-          {user?.email ?? 'Guest'}
+        <div
+          className="mb-2 truncate px-2 text-xs text-muted-foreground"
+          title={user?.email ?? ''}
+        >
+          {user?.email ?? t('auth.guest')}
         </div>
         <Button variant="outline" size="sm" className="w-full" onClick={handleSignOut}>
           <LogOut className="h-4 w-4" /> {t('auth.signout')}

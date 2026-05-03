@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
+import { useI18n } from '@/lib/i18n';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -46,6 +47,7 @@ const EMPTY_DRAFT: EntityDraft = {
 
 export default function EntitiesPage() {
   const { user } = useAuth();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [search, setSearch] = useState('');
@@ -111,7 +113,7 @@ export default function EntitiesPage() {
   async function handleSave() {
     if (!user) return;
     if (!draft.name.trim()) {
-      setError('Name is required.');
+      setError(t('entities.err.name'));
       return;
     }
     setSaving(true);
@@ -137,14 +139,15 @@ export default function EntitiesPage() {
       await load();
       closeForm();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save contact.');
+      setError(e instanceof Error ? e.message : t('entities.err.save'));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(e: Entity) {
-    if (!confirm(`Delete ${e.type} "${e.name}"?`)) return;
+    if (!confirm(t('entities.confirm_delete', { type: t(`entities.${e.type}`), name: e.name })))
+      return;
     const res = await supabase.from('entities').delete().eq('id', e.id);
     if (res.error) {
       alert(res.error.message);
@@ -159,12 +162,12 @@ export default function EntitiesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Clients & Suppliers</h1>
-          <p className="text-sm text-muted-foreground">Manage business contacts.</p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('entities.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('entities.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> New contact
+            <Plus className="h-4 w-4" /> {t('entities.new')}
           </Button>
         </div>
       </div>
@@ -173,21 +176,19 @@ export default function EntitiesPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <div className="space-y-1.5">
-              <CardTitle>{editing ? 'Edit contact' : 'New contact'}</CardTitle>
+              <CardTitle>{editing ? t('entities.edit') : t('entities.new')}</CardTitle>
               <CardDescription>
-                {editing
-                  ? 'Update the contact details below.'
-                  : 'Add a client or supplier.'}
+                {editing ? t('entities.edit_desc') : t('entities.new_desc')}
               </CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={closeForm} aria-label="Close">
+            <Button variant="ghost" size="icon" onClick={closeForm} aria-label={t('common.close')}>
               <X className="h-4 w-4" />
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="e-type">Type</Label>
+                <Label htmlFor="e-type">{t('entities.field.type')}</Label>
                 <Select
                   id="e-type"
                   value={draft.type}
@@ -195,21 +196,21 @@ export default function EntitiesPage() {
                     setDraft({ ...draft, type: ev.target.value as EntityType })
                   }
                 >
-                  <option value="client">Client</option>
-                  <option value="supplier">Supplier</option>
+                  <option value="client">{t('entities.client')}</option>
+                  <option value="supplier">{t('entities.supplier')}</option>
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="e-name">Name</Label>
+                <Label htmlFor="e-name">{t('common.name')}</Label>
                 <Input
                   id="e-name"
                   value={draft.name}
                   onChange={(ev) => setDraft({ ...draft, name: ev.target.value })}
-                  placeholder="Company or person name"
+                  placeholder={t('entities.field.name_placeholder')}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="e-email">Email</Label>
+                <Label htmlFor="e-email">{t('common.email')}</Label>
                 <Input
                   id="e-email"
                   type="email"
@@ -218,7 +219,7 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="e-phone">Phone</Label>
+                <Label htmlFor="e-phone">{t('common.phone')}</Label>
                 <Input
                   id="e-phone"
                   value={draft.phone}
@@ -226,7 +227,7 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="e-address">Address</Label>
+                <Label htmlFor="e-address">{t('common.address')}</Label>
                 <Input
                   id="e-address"
                   value={draft.address}
@@ -234,12 +235,12 @@ export default function EntitiesPage() {
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="e-tax">Tax ID</Label>
+                <Label htmlFor="e-tax">{t('entities.field.tax_id')}</Label>
                 <Input
                   id="e-tax"
                   value={draft.tax_id}
                   onChange={(ev) => setDraft({ ...draft, tax_id: ev.target.value })}
-                  placeholder="Optional"
+                  placeholder={t('common.optional')}
                 />
               </div>
             </div>
@@ -252,10 +253,14 @@ export default function EntitiesPage() {
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={closeForm} disabled={saving}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : editing ? 'Save changes' : 'Create contact'}
+                {saving
+                  ? t('common.saving')
+                  : editing
+                    ? t('entities.save_changes')
+                    : t('entities.create_action')}
               </Button>
             </div>
           </CardContent>
@@ -264,18 +269,18 @@ export default function EntitiesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All contacts</CardTitle>
-          <CardDescription>Search by name, email, phone or tax ID.</CardDescription>
+          <CardTitle>{t('entities.list_title')}</CardTitle>
+          <CardDescription>{t('entities.list_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search…"
-                className="pl-9"
+                placeholder={t('common.search_placeholder')}
+                className="ps-9"
               />
             </div>
             <Select
@@ -283,9 +288,9 @@ export default function EntitiesPage() {
               onChange={(e) => setTypeFilter(e.target.value as EntityType | 'all')}
               className="sm:w-48"
             >
-              <option value="all">All types</option>
-              <option value="client">Clients</option>
-              <option value="supplier">Suppliers</option>
+              <option value="all">{t('entities.all_types')}</option>
+              <option value="client">{t('entities.client.plural')}</option>
+              <option value="supplier">{t('entities.supplier.plural')}</option>
             </Select>
           </div>
 
@@ -298,11 +303,11 @@ export default function EntitiesPage() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={Users}
-              title="No contacts yet"
-              description="Add your first client or supplier to get started."
+              title={t('entities.empty')}
+              description={t('entities.empty_desc')}
               action={
                 <Button onClick={openCreate}>
-                  <Plus className="h-4 w-4" /> New contact
+                  <Plus className="h-4 w-4" /> {t('entities.new')}
                 </Button>
               }
             />
@@ -310,12 +315,12 @@ export default function EntitiesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Tax ID</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('common.name')}</TableHead>
+                  <TableHead>{t('entities.field.type')}</TableHead>
+                  <TableHead>{t('common.email')}</TableHead>
+                  <TableHead>{t('common.phone')}</TableHead>
+                  <TableHead>{t('entities.field.tax_id')}</TableHead>
+                  <TableHead className="text-end">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -324,7 +329,7 @@ export default function EntitiesPage() {
                     <TableCell className="font-medium">{e.name}</TableCell>
                     <TableCell>
                       <Badge variant={e.type === 'client' ? 'default' : 'secondary'}>
-                        {e.type}
+                        {t(`entities.${e.type}`)}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
@@ -336,21 +341,21 @@ export default function EntitiesPage() {
                     <TableCell className="text-muted-foreground">
                       {e.tax_id ?? '—'}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <div className="flex justify-end gap-2">
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => openEdit(e)}
-                          aria-label="Edit"
+                          aria-label={t('common.edit')}
                         >
-                          <Pencil className="h-4 w-4" /> Edit
+                          <Pencil className="h-4 w-4" /> {t('common.edit')}
                         </Button>
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => handleDelete(e)}
-                          aria-label="Delete"
+                          aria-label={t('common.delete')}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>

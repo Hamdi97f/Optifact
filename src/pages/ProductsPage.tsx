@@ -3,6 +3,7 @@ import { Package, Pencil, Plus, Search, Trash2, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
+import { useI18n } from '@/lib/i18n';
 import { formatMoney, formatQuantity, roundTo } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -48,6 +49,7 @@ const EMPTY_DRAFT: ProductDraft = {
 export default function ProductsPage() {
   const { user } = useAuth();
   const { settings } = useSettings();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState('');
@@ -107,7 +109,7 @@ export default function ProductsPage() {
   async function handleSave() {
     if (!user) return;
     if (!draft.name.trim()) {
-      setError('Name is required.');
+      setError(t('products.err.name'));
       return;
     }
     setSaving(true);
@@ -135,14 +137,14 @@ export default function ProductsPage() {
       await load();
       closeForm();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to save product.');
+      setError(e instanceof Error ? e.message : t('products.err.save'));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDelete(p: Product) {
-    if (!confirm(`Delete product "${p.name}"?`)) return;
+    if (!confirm(t('products.confirm_delete', { name: p.name }))) return;
     const res = await supabase.from('products').delete().eq('id', p.id);
     if (res.error) {
       alert(res.error.message);
@@ -157,14 +159,12 @@ export default function ProductsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Products</h1>
-          <p className="text-sm text-muted-foreground">
-            Catalog with stock and pricing.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('products.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('products.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> New product
+            <Plus className="h-4 w-4" /> {t('products.new')}
           </Button>
         </div>
       </div>
@@ -173,39 +173,37 @@ export default function ProductsPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <div className="space-y-1.5">
-              <CardTitle>{editing ? 'Edit product' : 'New product'}</CardTitle>
+              <CardTitle>{editing ? t('products.edit') : t('products.new')}</CardTitle>
               <CardDescription>
-                {editing
-                  ? 'Update the product details below.'
-                  : 'Add a product to your catalog.'}
+                {editing ? t('products.edit_desc') : t('products.create_desc')}
               </CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={closeForm} aria-label="Close">
+            <Button variant="ghost" size="icon" onClick={closeForm} aria-label={t('common.close')}>
               <X className="h-4 w-4" />
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="p-name">Name</Label>
+                <Label htmlFor="p-name">{t('common.name')}</Label>
                 <Input
                   id="p-name"
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder="e.g. Cement bag 25kg"
+                  placeholder={t('products.field.name_placeholder')}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="p-sku">SKU</Label>
+                <Label htmlFor="p-sku">{t('products.field.sku')}</Label>
                 <Input
                   id="p-sku"
                   value={draft.sku}
                   onChange={(e) => setDraft({ ...draft, sku: e.target.value })}
-                  placeholder="Optional"
+                  placeholder={t('common.optional')}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="p-stock">Stock quantity</Label>
+                <Label htmlFor="p-stock">{t('products.field.stock')}</Label>
                 <Input
                   id="p-stock"
                   type="number"
@@ -217,7 +215,7 @@ export default function ProductsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="p-purchase">Purchase price</Label>
+                <Label htmlFor="p-purchase">{t('products.field.purchase_price')}</Label>
                 <Input
                   id="p-purchase"
                   type="number"
@@ -230,7 +228,7 @@ export default function ProductsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="p-sale">Sale price</Label>
+                <Label htmlFor="p-sale">{t('products.field.sale_price')}</Label>
                 <Input
                   id="p-sale"
                   type="number"
@@ -243,7 +241,7 @@ export default function ProductsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="p-min">Low-stock alert threshold</Label>
+                <Label htmlFor="p-min">{t('products.field.min_stock')}</Label>
                 <Input
                   id="p-min"
                   type="number"
@@ -265,10 +263,14 @@ export default function ProductsPage() {
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={closeForm} disabled={saving}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleSave} disabled={saving}>
-                {saving ? 'Saving…' : editing ? 'Save changes' : 'Create product'}
+                {saving
+                  ? t('common.saving')
+                  : editing
+                    ? t('products.save_changes')
+                    : t('products.create_action')}
               </Button>
             </div>
           </CardContent>
@@ -277,17 +279,17 @@ export default function ProductsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All products</CardTitle>
-          <CardDescription>Search by name or SKU.</CardDescription>
+          <CardTitle>{t('products.title')}</CardTitle>
+          <CardDescription>{t('products.list_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="relative">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-              className="pl-9"
+              placeholder={t('common.search_placeholder')}
+              className="ps-9"
             />
           </div>
 
@@ -300,11 +302,11 @@ export default function ProductsPage() {
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={Package}
-              title="No products yet"
-              description="Add your first product to start tracking stock and pricing."
+              title={t('products.empty')}
+              description={t('products.empty_desc')}
               action={
                 <Button onClick={openCreate}>
-                  <Plus className="h-4 w-4" /> New product
+                  <Plus className="h-4 w-4" /> {t('products.new')}
                 </Button>
               }
             />
@@ -312,12 +314,12 @@ export default function ProductsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead className="text-right">Purchase</TableHead>
-                  <TableHead className="text-right">Sale</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('common.name')}</TableHead>
+                  <TableHead>{t('products.field.sku')}</TableHead>
+                  <TableHead className="text-end">{t('products.col.purchase')}</TableHead>
+                  <TableHead className="text-end">{t('products.col.sale')}</TableHead>
+                  <TableHead className="text-end">{t('products.col.stock')}</TableHead>
+                  <TableHead className="text-end">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -331,36 +333,36 @@ export default function ProductsPage() {
                       <TableCell className="text-muted-foreground">
                         {p.sku ?? '—'}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-end tabular-nums">
                         {formatMoney(Number(p.purchase_price), settings)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-end tabular-nums">
                         {formatMoney(Number(p.sale_price), settings)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-end tabular-nums">
                         {low ? (
                           <Badge variant="warning">
-                            {formatQuantity(stock, settings)} left
+                            {formatQuantity(stock, settings)} {t('products.left')}
                           </Badge>
                         ) : (
                           formatQuantity(stock, settings)
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         <div className="flex justify-end gap-2">
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => openEdit(p)}
-                            aria-label="Edit"
+                            aria-label={t('common.edit')}
                           >
-                            <Pencil className="h-4 w-4" /> Edit
+                            <Pencil className="h-4 w-4" /> {t('common.edit')}
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
                             onClick={() => handleDelete(p)}
-                            aria-label="Delete"
+                            aria-label={t('common.delete')}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

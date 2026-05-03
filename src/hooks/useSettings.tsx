@@ -75,7 +75,11 @@ function applyBranding(settings: AppSettings): void {
     document.documentElement.style.setProperty('--primary', triplet);
     document.documentElement.style.setProperty('--ring', triplet);
   }
-  document.documentElement.dir = settings.localization.rtl ? 'rtl' : 'ltr';
+  // Arabic always reads right-to-left; for other languages honour the
+  // explicit `rtl` preference (defaults to false). This guarantees a
+  // consistent layout direction matching the chosen UI language.
+  const rtl = settings.localization.language === 'ar' || settings.localization.rtl;
+  document.documentElement.dir = rtl ? 'rtl' : 'ltr';
   document.documentElement.lang = settings.localization.language;
 }
 

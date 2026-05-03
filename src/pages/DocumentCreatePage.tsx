@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
+import { useI18n } from '@/lib/i18n';
 import { computeTotals, effectiveFiscalStamp, effectiveTaxRate } from '@/lib/tax';
 import { allocateNumber, previewNumber } from '@/lib/numbering';
 import { formatMoney, formatNumber, roundTo } from '@/lib/format';
@@ -29,22 +30,17 @@ import type {
 
 interface DocumentCreatePageProps {
   type: DocumentType;
-  title: string;
   /** Path to navigate to after a successful save. */
   redirectTo: string;
 }
 
-const STEPS = [
-  { id: 'header', title: 'Document & client' },
-  { id: 'items', title: 'Line items' },
-  { id: 'review', title: 'Review & save' },
-] as const;
+const STEP_IDS = ['header', 'items', 'review'] as const;
+type StepId = (typeof STEP_IDS)[number];
 
-type StepId = (typeof STEPS)[number]['id'];
-
-export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePageProps) {
+export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps) {
   const { user } = useAuth();
   const { settings, setSettings } = useSettings();
+  const { t } = useI18n();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<StepId>('header');
@@ -121,7 +117,6 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
 
   function canGoNext(): boolean {
     if (step === 'header') {
-      // Client/supplier optional but recommended; require at least a date.
       return Boolean(date);
     }
     if (step === 'items') {
@@ -131,12 +126,12 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
   }
 
   function goNext() {
-    const idx = STEPS.findIndex((s) => s.id === step);
-    if (idx < STEPS.length - 1) setStep(STEPS[idx + 1].id);
+    const idx = STEP_IDS.indexOf(step);
+    if (idx < STEP_IDS.length - 1) setStep(STEP_IDS[idx + 1]);
   }
   function goBack() {
-    const idx = STEPS.findIndex((s) => s.id === step);
-    if (idx > 0) setStep(STEPS[idx - 1].id);
+    const idx = STEP_IDS.indexOf(step);
+    if (idx > 0) setStep(STEP_IDS[idx - 1]);
   }
 
   async function handleSave() {
@@ -144,9 +139,6 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
     setSaving(true);
     setError(null);
     try {
-      // Allocate the next number from the configured sequence when the user
-      // didn't override it. The settings counter is advanced after a successful
-      // save so failed attempts don't burn numbers.
       let allocatedNumber = number.trim();
       let advancedSettings = settings;
       if (!allocatedNumber) {
@@ -188,55 +180,61 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
       );
       if (itemsErr) throw itemsErr;
 
-      // Persist the advanced numbering counter only after both writes succeed.
       if (advancedSettings !== settings) {
         try {
           await setSettings(advancedSettings);
         } catch {
-          // Non-fatal: the document was saved with the right number; the
-          // counter will catch up on the next allocation attempt.
+          /* non-fatal: document saved with right number; counter catches up later */
         }
       }
 
       navigate(redirectTo);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Unknown error';
+      const msg = e instanceof Error ? e.message : t('common.unknown_error');
       setError(msg);
     } finally {
       setSaving(false);
     }
   }
 
+  const stepIdx = STEP_IDS.indexOf(step);
+  const docTypeLabel = t(`doc.${type}`);
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">New {title.toLowerCase()}</h1>
-        <p className="text-sm text-muted-foreground">Multi-step form with real-time totals.</p>
+        <h1 className="text-2xl font-bold tracking-tight">
+          {t('doccreate.new', { type: docTypeLabel })}
+        </h1>
+        <p className="text-sm text-muted-foreground">{t('doccreate.subtitle')}</p>
       </div>
 
       <Stepper step={step} />
 
       <Card>
         <CardHeader>
-          <CardTitle>{STEPS.find((s) => s.id === step)?.title}</CardTitle>
+          <CardTitle>{t(`doccreate.step.${step}`)}</CardTitle>
           <CardDescription>
-            Step {STEPS.findIndex((s) => s.id === step) + 1} of {STEPS.length}
+            {t('doccreate.step_label', {
+              current: stepIdx + 1,
+              total: STEP_IDS.length,
+            })}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {step === 'header' && (
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="number">Document number</Label>
+                <Label htmlFor="number">{t('doccreate.field.number')}</Label>
                 <Input
                   id="number"
                   value={number}
                   onChange={(e) => setNumber(e.target.value)}
-                  placeholder={`Auto: ${numberPreview}`}
+                  placeholder={t('doccreate.field.number_auto', { preview: numberPreview })}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="date">Date</Label>
+                <Label htmlFor="date">{t('common.date')}</Label>
                 <Input
                   id="date"
                   type="date"
@@ -246,7 +244,9 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label htmlFor="client">
-                  {type === 'purchase_order' ? 'Supplier' : 'Client'}
+                  {type === 'purchase_order'
+                    ? t('doccreate.field.supplier')
+                    : t('doccreate.field.client')}
                 </Label>
                 <Select
                   id="client"
@@ -262,23 +262,23 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="status">Status</Label>
+                <Label htmlFor="status">{t('common.status')}</Label>
                 <Select
                   id="status"
                   value={status}
                   onChange={(e) => setStatus(e.target.value as DocumentStatus)}
                 >
-                  <option value="draft">Draft</option>
-                  <option value="issued">Issued</option>
+                  <option value="draft">{t('status.draft')}</option>
+                  <option value="issued">{t('status.issued')}</option>
                 </Select>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="notes">Notes</Label>
+                <Label htmlFor="notes">{t('common.notes')}</Label>
                 <Input
                   id="notes"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional"
+                  placeholder={t('common.optional')}
                 />
               </div>
             </div>
@@ -292,12 +292,12 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                   className="grid gap-2 rounded-lg border p-3 sm:grid-cols-12 sm:items-end"
                 >
                   <div className="space-y-1.5 sm:col-span-4">
-                    <Label>Product</Label>
+                    <Label>{t('doccreate.field.product')}</Label>
                     <Select
                       value={it.product_id ?? ''}
                       onChange={(e) => updateItem(i, { product_id: e.target.value || null })}
                     >
-                      <option value="">— Free text —</option>
+                      <option value="">{t('doccreate.field.product_freetext')}</option>
                       {products.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}
@@ -306,14 +306,14 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                     </Select>
                   </div>
                   <div className="space-y-1.5 sm:col-span-4">
-                    <Label>Description</Label>
+                    <Label>{t('doccreate.field.description')}</Label>
                     <Input
                       value={it.description}
                       onChange={(e) => updateItem(i, { description: e.target.value })}
                     />
                   </div>
                   <div className="space-y-1.5 sm:col-span-1">
-                    <Label>Qty</Label>
+                    <Label>{t('doccreate.field.qty')}</Label>
                     <Input
                       type="number"
                       min={0}
@@ -323,7 +323,7 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                     />
                   </div>
                   <div className="space-y-1.5 sm:col-span-2">
-                    <Label>Unit price</Label>
+                    <Label>{t('doccreate.field.unit_price')}</Label>
                     <Input
                       type="number"
                       min={0}
@@ -339,18 +339,19 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                       size="icon"
                       onClick={() => removeItem(i)}
                       disabled={items.length === 1}
-                      aria-label="Remove line"
+                      aria-label={t('doccreate.remove_line')}
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
-                  <div className="text-right text-xs text-muted-foreground sm:col-span-12">
-                    Line total: {formatMoney((Number(it.qty) || 0) * (Number(it.unit_price) || 0), settings)}
+                  <div className="text-end text-xs text-muted-foreground sm:col-span-12">
+                    {t('doccreate.line_total')}:{' '}
+                    {formatMoney((Number(it.qty) || 0) * (Number(it.unit_price) || 0), settings)}
                   </div>
                 </div>
               ))}
               <Button type="button" variant="outline" onClick={addItem}>
-                <Plus className="h-4 w-4" /> Add line
+                <Plus className="h-4 w-4" /> {t('doccreate.add_line')}
               </Button>
             </div>
           )}
@@ -358,7 +359,7 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
           {step === 'review' && (
             <div className="space-y-4">
               <div className="rounded-lg border bg-muted/30 p-4 text-sm">
-                <div className="font-medium">{title}</div>
+                <div className="font-medium">{docTypeLabel}</div>
                 <div className="text-muted-foreground">
                   {date} · {entities.find((e) => e.id === clientId)?.name ?? '—'}
                 </div>
@@ -392,16 +393,16 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
       </Card>
 
       <div className="flex items-center justify-between">
-        <Button variant="ghost" onClick={goBack} disabled={step === STEPS[0].id || saving}>
-          <ArrowLeft className="h-4 w-4" /> Back
+        <Button variant="ghost" onClick={goBack} disabled={step === STEP_IDS[0] || saving}>
+          <ArrowLeft className="h-4 w-4" /> {t('common.back')}
         </Button>
         {step !== 'review' ? (
           <Button onClick={goNext} disabled={!canGoNext()}>
-            Next <ArrowRight className="h-4 w-4" />
+            {t('common.next')} <ArrowRight className="h-4 w-4" />
           </Button>
         ) : (
           <Button onClick={handleSave} disabled={saving}>
-            <Check className="h-4 w-4" /> {saving ? 'Saving…' : 'Save document'}
+            <Check className="h-4 w-4" /> {saving ? t('common.saving') : t('doccreate.save')}
           </Button>
         )}
       </div>
@@ -410,11 +411,12 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
 }
 
 function Stepper({ step }: { step: StepId }) {
-  const currentIdx = STEPS.findIndex((s) => s.id === step);
+  const { t } = useI18n();
+  const currentIdx = STEP_IDS.indexOf(step);
   return (
     <ol className="flex items-center gap-2 text-sm">
-      {STEPS.map((s, i) => (
-        <li key={s.id} className="flex items-center gap-2">
+      {STEP_IDS.map((id, i) => (
+        <li key={id} className="flex items-center gap-2">
           <div
             className={cn(
               'flex h-7 w-7 items-center justify-center rounded-full border text-xs font-medium',
@@ -431,9 +433,9 @@ function Stepper({ step }: { step: StepId }) {
               i === currentIdx ? 'font-medium text-foreground' : 'text-muted-foreground',
             )}
           >
-            {s.title}
+            {t(`doccreate.step.${id}`)}
           </span>
-          {i < STEPS.length - 1 && <span className="mx-1 h-px w-8 bg-border" />}
+          {i < STEP_IDS.length - 1 && <span className="mx-1 h-px w-8 bg-border" />}
         </li>
       ))}
     </ol>
@@ -448,21 +450,29 @@ function TotalsBox({
   type: DocumentType;
 }) {
   const { settings } = useSettings();
+  const { t } = useI18n();
   const tvaPctRaw = effectiveTaxRate(settings, type) * 100;
   const tvaPctLabel = formatNumber(tvaPctRaw, settings, { minDecimals: 0, maxDecimals: 2 });
   const stamp = effectiveFiscalStamp(settings, type);
   return (
-    <div className="ml-auto w-full max-w-xs space-y-1 rounded-lg border p-4 text-sm">
-      <Row label="Total HT" value={formatMoney(totals.total_ht, settings)} />
-      <Row label={`TVA (${tvaPctLabel}%)`} value={formatMoney(totals.tva, settings)} />
+    <div className="ms-auto w-full max-w-xs space-y-1 rounded-lg border p-4 text-sm">
+      <Row label={t('doccreate.totals.ht')} value={formatMoney(totals.total_ht, settings)} />
+      <Row
+        label={`${t('doccreate.totals.tva')} (${tvaPctLabel}%)`}
+        value={formatMoney(totals.tva, settings)}
+      />
       {totals.timbre_fiscal > 0 && (
         <Row
-          label={`Timbre fiscal (${formatNumber(stamp, settings)})`}
+          label={`${t('doccreate.totals.stamp')} (${formatNumber(stamp, settings)})`}
           value={formatMoney(totals.timbre_fiscal, settings)}
         />
       )}
       <div className="mt-2 border-t pt-2">
-        <Row label="Total TTC" value={formatMoney(totals.total_ttc, settings)} bold />
+        <Row
+          label={t('doccreate.totals.ttc')}
+          value={formatMoney(totals.total_ttc, settings)}
+          bold
+        />
       </div>
     </div>
   );

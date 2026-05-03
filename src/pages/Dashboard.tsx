@@ -22,6 +22,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
+import { useI18n } from '@/lib/i18n';
 import { formatMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import {
@@ -61,6 +62,7 @@ function getLast6Months(): { key: string; label: string; year: number; month: nu
 export default function Dashboard() {
   const { user } = useAuth();
   const { settings } = useSettings();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [lowStock, setLowStock] = useState<Product[]>([]);
@@ -144,20 +146,18 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-sm text-muted-foreground">
-            Overview of your sales, expenses and stock for the last 6 months.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('dashboard.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('dashboard.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link to="/invoices/new">
             <Button>
-              <Plus className="h-4 w-4" /> New invoice
+              <Plus className="h-4 w-4" /> {t('dashboard.new_invoice')}
             </Button>
           </Link>
           <Link to="/quotes/new">
             <Button variant="outline">
-              <FileText className="h-4 w-4" /> New quote
+              <FileText className="h-4 w-4" /> {t('dashboard.new_quote')}
             </Button>
           </Link>
         </div>
@@ -166,25 +166,25 @@ export default function Dashboard() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           loading={loading}
-          label="Sales (6m)"
+          label={t('dashboard.kpi.sales')}
           value={formatMoney(kpis.totalSales, settings)}
           icon={<TrendingUp className="h-4 w-4 text-emerald-600" />}
         />
         <KpiCard
           loading={loading}
-          label="Expenses (6m)"
+          label={t('dashboard.kpi.expenses')}
           value={formatMoney(kpis.totalExpenses, settings)}
           icon={<ArrowUpRight className="h-4 w-4 text-rose-600" />}
         />
         <KpiCard
           loading={loading}
-          label="Unpaid invoices"
+          label={t('dashboard.kpi.unpaid')}
           value={formatMoney(unpaidTotal, settings)}
           icon={<Wallet className="h-4 w-4 text-amber-600" />}
         />
         <KpiCard
           loading={loading}
-          label="Invoices issued"
+          label={t('dashboard.kpi.invoices_issued')}
           value={String(kpis.invoiceCount)}
           icon={<FileText className="h-4 w-4 text-primary" />}
         />
@@ -193,8 +193,8 @@ export default function Dashboard() {
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>Sales vs Expenses</CardTitle>
-            <CardDescription>Monthly TTC totals (TND).</CardDescription>
+            <CardTitle>{t('dashboard.chart.title')}</CardTitle>
+            <CardDescription>{t('dashboard.chart.desc')}</CardDescription>
           </CardHeader>
           <CardContent className="h-72">
             {loading ? (
@@ -210,8 +210,8 @@ export default function Dashboard() {
                     contentStyle={{ borderRadius: 8, fontSize: 12 }}
                   />
                   <Legend />
-                  <Bar dataKey="sales" name="Sales" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                  <Bar dataKey="expenses" name="Expenses" fill="#f43f5e" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="sales" name={t('dashboard.chart.sales')} fill="#2563eb" radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="expenses" name={t('dashboard.chart.expenses')} fill="#f43f5e" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -221,9 +221,9 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-4 w-4 text-amber-600" /> Low stock alerts
+              <AlertTriangle className="h-4 w-4 text-amber-600" /> {t('dashboard.lowstock.title')}
             </CardTitle>
-            <CardDescription>Products at or below the alert threshold.</CardDescription>
+            <CardDescription>{t('dashboard.lowstock.desc')}</CardDescription>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -235,8 +235,8 @@ export default function Dashboard() {
             ) : lowStock.length === 0 ? (
               <EmptyState
                 icon={Package}
-                title="All good"
-                description="No products below the alert threshold."
+                title={t('dashboard.lowstock.allgood')}
+                description={t('dashboard.lowstock.allgood_desc')}
               />
             ) : (
               <ul className="divide-y">
@@ -248,7 +248,9 @@ export default function Dashboard() {
                         SKU {p.sku ?? '—'}
                       </div>
                     </div>
-                    <Badge variant="warning">{Number(p.stock_qty)} left</Badge>
+                    <Badge variant="warning">
+                      {Number(p.stock_qty)} {t('dashboard.lowstock.left')}
+                    </Badge>
                   </li>
                 ))}
               </ul>
