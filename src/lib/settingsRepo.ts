@@ -12,6 +12,7 @@ import type {
   AppSettings,
   NumberedDocType,
   NumberingSequence,
+  ResetCycle,
   TaxRate,
 } from '@/types/settings';
 
@@ -106,7 +107,7 @@ export function defaultSettings(): AppSettings {
   };
 }
 
-function blankSeq(prefix: string, padding: number, reset: 'never' | 'yearly' | 'monthly'): NumberingSequence {
+function blankSeq(prefix: string, padding: number, reset: ResetCycle): NumberingSequence {
   return {
     prefix,
     suffix: '',
