@@ -21,7 +21,8 @@ import {
 } from 'recharts';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { formatTND } from '@/lib/utils';
+import { useSettings } from '@/hooks/useSettings';
+import { formatMoney } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import {
   Card,
@@ -59,6 +60,7 @@ function getLast6Months(): { key: string; label: string; year: number; month: nu
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { settings } = useSettings();
   const [loading, setLoading] = useState(true);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [lowStock, setLowStock] = useState<Product[]>([]);
@@ -165,19 +167,19 @@ export default function Dashboard() {
         <KpiCard
           loading={loading}
           label="Sales (6m)"
-          value={formatTND(kpis.totalSales)}
+          value={formatMoney(kpis.totalSales, settings)}
           icon={<TrendingUp className="h-4 w-4 text-emerald-600" />}
         />
         <KpiCard
           loading={loading}
           label="Expenses (6m)"
-          value={formatTND(kpis.totalExpenses)}
+          value={formatMoney(kpis.totalExpenses, settings)}
           icon={<ArrowUpRight className="h-4 w-4 text-rose-600" />}
         />
         <KpiCard
           loading={loading}
           label="Unpaid invoices"
-          value={formatTND(unpaidTotal)}
+          value={formatMoney(unpaidTotal, settings)}
           icon={<Wallet className="h-4 w-4 text-amber-600" />}
         />
         <KpiCard
@@ -204,7 +206,7 @@ export default function Dashboard() {
                   <XAxis dataKey="month" stroke="currentColor" fontSize={12} />
                   <YAxis stroke="currentColor" fontSize={12} />
                   <Tooltip
-                    formatter={(v: number) => formatTND(v)}
+                    formatter={(v: number) => formatMoney(v, settings)}
                     contentStyle={{ borderRadius: 8, fontSize: 12 }}
                   />
                   <Legend />

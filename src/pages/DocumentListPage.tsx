@@ -3,7 +3,9 @@ import { Link } from 'react-router-dom';
 import { Download, FileText, Plus, Search, FilePlus2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { formatDate, formatTND } from '@/lib/utils';
+import { useSettings } from '@/hooks/useSettings';
+import { formatDate, formatMoney } from '@/lib/format';
+import { effectiveFiscalStamp } from '@/lib/tax';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -66,6 +68,7 @@ export function DocumentListPage({
   enableQuoteConversion = false,
 }: DocumentListPageProps) {
   const { user } = useAuth();
+  const { settings } = useSettings();
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [clients, setClients] = useState<Record<string, Entity>>({});
@@ -147,6 +150,7 @@ export function DocumentListPage({
       items,
       client,
       profile: (profileRes.data ?? null) as Profile | null,
+      settings,
     });
     setBusyId(null);
   }
@@ -164,6 +168,7 @@ export function DocumentListPage({
       const itemsRes = await supabase.from('doc_items').select('*').eq('doc_id', doc.id);
       const items = (itemsRes.data ?? []) as DocItem[];
 
+      const stamp = effectiveFiscalStamp(settings, 'invoice');
       const { data: invoice, error: invErr } = await supabase
         .from('documents')
         .insert({
@@ -174,9 +179,9 @@ export function DocumentListPage({
           client_id: doc.client_id,
           total_ht: doc.total_ht,
           tva: doc.tva,
-          // Timbre fiscal applies to invoices.
-          timbre_fiscal: 1.0,
-          total_ttc: Number(doc.total_ht) + Number(doc.tva) + 1.0,
+          // Fiscal stamp: read from settings (configurable per document type).
+          timbre_fiscal: stamp,
+          total_ttc: Number(doc.total_ht) + Number(doc.tva) + stamp,
           notes: doc.notes,
           source_doc_id: doc.id,
         })
@@ -294,7 +299,7 @@ export function DocumentListPage({
                 {filtered.map((d) => (
                   <TableRow key={d.id}>
                     <TableCell className="font-medium">{d.number ?? d.id.slice(0, 8)}</TableCell>
-                    <TableCell>{formatDate(d.date)}</TableCell>
+                    <TableCell>{formatDate(d.date, settings)}</TableCell>
                     <TableCell>
                       {d.client_id ? clients[d.client_id]?.name ?? '—' : '—'}
                     </TableCell>
@@ -302,7 +307,7 @@ export function DocumentListPage({
                       <Badge variant={STATUS_VARIANTS[d.status]}>{d.status}</Badge>
                     </TableCell>
                     <TableCell className="text-right tabular-nums">
-                      {formatTND(Number(d.total_ttc))}
+                      {formatMoney(Number(d.total_ttc), settings)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
