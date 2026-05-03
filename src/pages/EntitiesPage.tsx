@@ -3,6 +3,7 @@ import { Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useI18n } from '@/lib/i18n';
+import { useSettings } from '@/hooks/useSettings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -34,6 +35,7 @@ interface EntityDraft {
   email: string;
   address: string;
   tax_id: string;
+  tax_exemptions: string[];
 }
 
 const EMPTY_DRAFT: EntityDraft = {
@@ -43,11 +45,13 @@ const EMPTY_DRAFT: EntityDraft = {
   email: '',
   address: '',
   tax_id: '',
+  tax_exemptions: [],
 };
 
 export default function EntitiesPage() {
   const { user } = useAuth();
   const { t } = useI18n();
+  const { settings } = useSettings();
   const [loading, setLoading] = useState(true);
   const [entities, setEntities] = useState<Entity[]>([]);
   const [search, setSearch] = useState('');
@@ -101,6 +105,7 @@ export default function EntitiesPage() {
       email: e.email ?? '',
       address: e.address ?? '',
       tax_id: e.tax_id ?? '',
+      tax_exemptions: Array.isArray(e.tax_exemptions) ? [...e.tax_exemptions] : [],
     });
   }
 
@@ -126,6 +131,7 @@ export default function EntitiesPage() {
         email: draft.email.trim() || null,
         address: draft.address.trim() || null,
         tax_id: draft.tax_id.trim() || null,
+        tax_exemptions: draft.tax_exemptions,
       };
       if (editing) {
         const res = await supabase.from('entities').update(payload).eq('id', editing.id);
@@ -242,6 +248,42 @@ export default function EntitiesPage() {
                   onChange={(ev) => setDraft({ ...draft, tax_id: ev.target.value })}
                   placeholder={t('common.optional')}
                 />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label>{t('entities.field.tax_exemptions')}</Label>
+                {settings.tax.rates.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    {t('entities.field.tax_exemptions.empty')}
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-3 rounded-md border p-2 text-sm">
+                    {settings.tax.rates.map((r) => {
+                      const checked = draft.tax_exemptions.includes(r.id);
+                      return (
+                        <label key={r.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => {
+                              setDraft({
+                                ...draft,
+                                tax_exemptions: checked
+                                  ? draft.tax_exemptions.filter((id) => id !== r.id)
+                                  : [...draft.tax_exemptions, r.id],
+                              });
+                            }}
+                          />
+                          <span>
+                            {r.name} ({r.rate}%)
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {t('entities.field.tax_exemptions.help')}
+                </p>
               </div>
             </div>
 

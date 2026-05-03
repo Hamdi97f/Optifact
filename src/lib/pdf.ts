@@ -9,7 +9,7 @@ import {
   formatNumber,
   formatQuantity,
 } from './format';
-import { effectiveTaxRate } from './tax';
+import { computeTaxBreakdown } from './tax';
 
 const DOC_TITLES: Record<DocumentRecord['type'], string> = {
   quote: 'DEVIS',
@@ -124,16 +124,28 @@ export function generateDocumentPdf({ doc, items, client, profile, settings }: G
   const tx = pageWidth - 80;
   let ty = finalY + 10;
 
-  const tvaPct = (effectiveTaxRate(s, doc.type) * 100);
-  const tvaPctStr = formatNumber(tvaPct, s, { minDecimals: 0, maxDecimals: 2 });
-
   pdf.setFont('helvetica', 'normal');
   pdf.text('Total HT:', tx, ty);
   pdf.text(moneyStr(Number(doc.total_ht)), pageWidth - 14, ty, { align: 'right' });
   ty += 6;
-  pdf.text(`TVA (${tvaPctStr}%):`, tx, ty);
-  pdf.text(moneyStr(Number(doc.tva)), pageWidth - 14, ty, { align: 'right' });
-  ty += 6;
+
+  // Tax breakdown — recompute from the persisted items + settings + client so
+  // combined taxes and customer exemptions render their per-line detail.
+  const taxLines = computeTaxBreakdown(Number(doc.total_ht) || 0, s, doc.type, client);
+  if (taxLines.length > 0) {
+    for (const line of taxLines) {
+      const pct = formatNumber(line.rate, s, { minDecimals: 0, maxDecimals: 2 });
+      pdf.text(`${line.name} (${pct}%):`, tx, ty);
+      pdf.text(moneyStr(line.amount), pageWidth - 14, ty, { align: 'right' });
+      ty += 6;
+    }
+  } else {
+    // Fallback for legacy docs whose taxes can't be re-derived (e.g. tax row
+    // was deleted from settings) — show the persisted tva column as before.
+    pdf.text('TVA:', tx, ty);
+    pdf.text(moneyStr(Number(doc.tva)), pageWidth - 14, ty, { align: 'right' });
+    ty += 6;
+  }
   if (Number(doc.timbre_fiscal) > 0) {
     pdf.text('Timbre fiscal:', tx, ty);
     pdf.text(moneyStr(Number(doc.timbre_fiscal)), pageWidth - 14, ty, { align: 'right' });

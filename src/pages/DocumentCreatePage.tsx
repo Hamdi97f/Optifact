@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useI18n } from '@/lib/i18n';
-import { computeTotals, effectiveFiscalStamp, effectiveTaxRate } from '@/lib/tax';
+import { computeTotals, effectiveFiscalStamp } from '@/lib/tax';
 import { allocateNumber, previewNumber } from '@/lib/numbering';
 import { formatMoney, formatNumber, roundTo } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -81,9 +81,14 @@ export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps
     })();
   }, [user, type]);
 
+  const selectedClient = useMemo(
+    () => entities.find((e) => e.id === clientId) ?? null,
+    [entities, clientId],
+  );
+
   const totals = useMemo(
-    () => computeTotals(items, type, { settings }),
-    [items, type, settings],
+    () => computeTotals(items, type, { settings, client: selectedClient }),
+    [items, type, settings, selectedClient],
   );
   const numberPreview = useMemo(
     () => previewNumber(settings, type, new Date(date || Date.now())),
@@ -446,21 +451,38 @@ function TotalsBox({
   totals,
   type,
 }: {
-  totals: { total_ht: number; tva: number; timbre_fiscal: number; total_ttc: number };
+  totals: {
+    total_ht: number;
+    tva: number;
+    timbre_fiscal: number;
+    total_ttc: number;
+    taxes: { id: string; name: string; rate: number; amount: number }[];
+  };
   type: DocumentType;
 }) {
   const { settings } = useSettings();
   const { t } = useI18n();
-  const tvaPctRaw = effectiveTaxRate(settings, type) * 100;
-  const tvaPctLabel = formatNumber(tvaPctRaw, settings, { minDecimals: 0, maxDecimals: 2 });
   const stamp = effectiveFiscalStamp(settings, type);
   return (
     <div className="ms-auto w-full max-w-xs space-y-1 rounded-lg border p-4 text-sm">
       <Row label={t('doccreate.totals.ht')} value={formatMoney(totals.total_ht, settings)} />
-      <Row
-        label={`${t('doccreate.totals.tva')} (${tvaPctLabel}%)`}
-        value={formatMoney(totals.tva, settings)}
-      />
+      {totals.taxes.length > 0 ? (
+        totals.taxes.map((line) => {
+          const pct = formatNumber(line.rate, settings, { minDecimals: 0, maxDecimals: 2 });
+          return (
+            <Row
+              key={line.id}
+              label={`${line.name} (${pct}%)`}
+              value={formatMoney(line.amount, settings)}
+            />
+          );
+        })
+      ) : (
+        <Row
+          label={t('doccreate.totals.tva')}
+          value={formatMoney(0, settings)}
+        />
+      )}
       {totals.timbre_fiscal > 0 && (
         <Row
           label={`${t('doccreate.totals.stamp')} (${formatNumber(stamp, settings)})`}

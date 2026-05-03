@@ -32,6 +32,7 @@ import type {
   NumberedDocType,
   NumberingSequence,
   TaxRate,
+  TaxRateComponent,
   UserAccount,
   UserRole,
 } from '@/types/settings';
@@ -661,6 +662,28 @@ function TaxTab({
     const next = tax.rates.map((r, i) => (i === idx ? { ...r, ...patch } : r));
     onChange({ ...tax, rates: next });
   }
+  function changeRateType(idx: number, nextType: TaxRate['type']) {
+    const current = tax.rates[idx];
+    const patch: Partial<TaxRate> = { type: nextType };
+    if (nextType === 'combined') {
+      // Initialise an empty components array so the editor renders.
+      patch.components = current.components ?? [];
+    } else {
+      // Drop components when leaving combined to keep the data clean.
+      patch.components = undefined;
+    }
+    patchRate(idx, patch);
+  }
+  function setComponents(idx: number, components: TaxRateComponent[]) {
+    // Surface the sum of the component rates as the combined "rate" so the
+    // existing UI (default selectors, etc.) shows a meaningful percentage.
+    const ratesById = new Map(tax.rates.map((r) => [r.id, r]));
+    const ratePct = components.reduce((sum, c) => {
+      const r = ratesById.get(c.tax_id);
+      return r ? sum + (Number(r.rate) || 0) : sum;
+    }, 0);
+    patchRate(idx, { components, rate: Math.round(ratePct * 1000) / 1000 });
+  }
   function removeRate(idx: number) {
     const removed = tax.rates[idx];
     const nextRates = tax.rates.filter((_, i) => i !== idx);
@@ -707,46 +730,57 @@ function TaxTab({
         </CardHeader>
         <CardContent className="space-y-3">
           {tax.rates.map((r, i) => (
-            <div key={r.id} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-12 sm:items-end">
-              <Field label={t('common.name')} className="sm:col-span-3">
-                <Input value={r.name} onChange={(e) => patchRate(i, { name: e.target.value })} />
-              </Field>
-              <Field label={t('settings.tax.rate_pct')} className="sm:col-span-2">
-                <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={r.rate}
-                  onChange={(e) => patchRate(i, { rate: Number(e.target.value) || 0 })}
-                />
-              </Field>
-              <Field label={t('settings.tax.type')} className="sm:col-span-3">
-                <Select
-                  value={r.type}
-                  onChange={(e) => patchRate(i, { type: e.target.value as TaxRate['type'] })}
-                >
-                  <option value="vat">{t('settings.tax.type.vat')}</option>
-                  <option value="withholding">{t('settings.tax.type.withholding')}</option>
-                  <option value="stamp">{t('settings.tax.type.stamp')}</option>
-                  <option value="other">{t('settings.tax.type.other')}</option>
-                </Select>
-              </Field>
-              <Field label={t('settings.tax.account_code')} className="sm:col-span-3">
-                <Input
-                  value={r.account_code}
-                  onChange={(e) => patchRate(i, { account_code: e.target.value })}
-                />
-              </Field>
-              <div className="flex justify-end sm:col-span-1">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeRate(i)}
-                  aria-label={t('common.delete')}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+            <div key={r.id} className="space-y-2 rounded-lg border p-3">
+              <div className="grid gap-2 sm:grid-cols-12 sm:items-end">
+                <Field label={t('common.name')} className="sm:col-span-3">
+                  <Input value={r.name} onChange={(e) => patchRate(i, { name: e.target.value })} />
+                </Field>
+                <Field label={t('settings.tax.rate_pct')} className="sm:col-span-2">
+                  <Input
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={r.rate}
+                    disabled={r.type === 'combined'}
+                    onChange={(e) => patchRate(i, { rate: Number(e.target.value) || 0 })}
+                  />
+                </Field>
+                <Field label={t('settings.tax.type')} className="sm:col-span-3">
+                  <Select
+                    value={r.type}
+                    onChange={(e) => changeRateType(i, e.target.value as TaxRate['type'])}
+                  >
+                    <option value="vat">{t('settings.tax.type.vat')}</option>
+                    <option value="withholding">{t('settings.tax.type.withholding')}</option>
+                    <option value="stamp">{t('settings.tax.type.stamp')}</option>
+                    <option value="other">{t('settings.tax.type.other')}</option>
+                    <option value="combined">{t('settings.tax.type.combined')}</option>
+                  </Select>
+                </Field>
+                <Field label={t('settings.tax.account_code')} className="sm:col-span-3">
+                  <Input
+                    value={r.account_code}
+                    onChange={(e) => patchRate(i, { account_code: e.target.value })}
+                  />
+                </Field>
+                <div className="flex justify-end sm:col-span-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeRate(i)}
+                    aria-label={t('common.delete')}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
+              {r.type === 'combined' && (
+                <CombinedTaxEditor
+                  rate={r}
+                  allRates={tax.rates}
+                  onChange={(components) => setComponents(i, components)}
+                />
+              )}
             </div>
           ))}
           <Button variant="outline" size="sm" onClick={addRate}>
@@ -838,6 +872,158 @@ function TaxTab({
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/* --------------------------- Combined tax editor -------------------------- */
+
+function CombinedTaxEditor({
+  rate,
+  allRates,
+  onChange,
+}: {
+  rate: TaxRate;
+  allRates: TaxRate[];
+  onChange: (components: TaxRateComponent[]) => void;
+}) {
+  const { t } = useI18n();
+  const components = rate.components ?? [];
+
+  // Pickable components: any tax that is not a combined tax and not the
+  // current row itself (avoid self-reference).
+  const pickable = allRates.filter((r) => r.id !== rate.id && r.type !== 'combined');
+
+  // Maximum 3 components per the product requirement (combiné de 2 ou 3 taxes).
+  const canAdd = components.length < 3;
+
+  function patchComponent(idx: number, patch: Partial<TaxRateComponent>) {
+    onChange(
+      components.map((c, i) => (i === idx ? { ...c, ...patch } : c)),
+    );
+  }
+  function removeComponent(idx: number) {
+    onChange(components.filter((_, i) => i !== idx));
+  }
+  function addComponent() {
+    const used = new Set(components.map((c) => c.tax_id));
+    const next = pickable.find((r) => !used.has(r.id));
+    if (!next) return;
+    onChange([...components, { tax_id: next.id, base: 'HT', base_tax_ids: [] }]);
+  }
+  function toggleBaseTaxId(idx: number, taxId: string) {
+    const c = components[idx];
+    const has = c.base_tax_ids.includes(taxId);
+    patchComponent(idx, {
+      base_tax_ids: has
+        ? c.base_tax_ids.filter((id) => id !== taxId)
+        : [...c.base_tax_ids, taxId],
+    });
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-dashed bg-muted/30 p-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium">{t('settings.tax.combined.title')}</div>
+        <span className="text-xs text-muted-foreground">
+          {t('settings.tax.combined.help')}
+        </span>
+      </div>
+
+      {components.length === 0 && (
+        <div className="text-sm text-muted-foreground">
+          {t('settings.tax.combined.empty')}
+        </div>
+      )}
+
+      {components.map((c, idx) => {
+        const ref = allRates.find((r) => r.id === c.tax_id);
+        // Other components in the same combined tax — eligible bases for HT+.
+        const others = components.filter((_, i) => i !== idx);
+        return (
+          <div
+            key={`${c.tax_id}-${idx}`}
+            className="grid gap-2 rounded-md border bg-background p-2 sm:grid-cols-12 sm:items-end"
+          >
+            <Field label={t('settings.tax.combined.tax')} className="sm:col-span-4">
+              <Select
+                value={c.tax_id}
+                onChange={(e) => patchComponent(idx, { tax_id: e.target.value })}
+              >
+                {pickable.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name} ({r.rate}%)
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label={t('settings.tax.combined.base')} className="sm:col-span-3">
+              <Select
+                value={c.base}
+                onChange={(e) =>
+                  patchComponent(idx, {
+                    base: e.target.value as TaxRateComponent['base'],
+                    // Reset deps when switching back to plain HT.
+                    base_tax_ids: e.target.value === 'HT' ? [] : c.base_tax_ids,
+                  })
+                }
+              >
+                <option value="HT">{t('settings.tax.combined.base.ht')}</option>
+                <option value="HT_PLUS_TAXES">
+                  {t('settings.tax.combined.base.ht_plus')}
+                </option>
+              </Select>
+            </Field>
+            <div className="sm:col-span-4">
+              {c.base === 'HT_PLUS_TAXES' ? (
+                <div className="space-y-1">
+                  <Label className="text-xs">{t('settings.tax.combined.base_taxes')}</Label>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {others.length === 0 ? (
+                      <span className="text-muted-foreground">
+                        {t('settings.tax.combined.base_taxes_empty')}
+                      </span>
+                    ) : (
+                      others.map((o) => {
+                        const oRef = allRates.find((r) => r.id === o.tax_id);
+                        if (!oRef) return null;
+                        return (
+                          <label key={o.tax_id} className="flex items-center gap-1">
+                            <input
+                              type="checkbox"
+                              checked={c.base_tax_ids.includes(o.tax_id)}
+                              onChange={() => toggleBaseTaxId(idx, o.tax_id)}
+                            />
+                            {oRef.name}
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-xs text-muted-foreground">
+                  {ref ? `${ref.rate}% × HT` : ''}
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end sm:col-span-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => removeComponent(idx)}
+                aria-label={t('common.delete')}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        );
+      })}
+
+      <Button variant="outline" size="sm" onClick={addComponent} disabled={!canAdd}>
+        + {t('settings.tax.combined.add')}
+      </Button>
     </div>
   );
 }
