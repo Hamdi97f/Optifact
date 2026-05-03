@@ -52,12 +52,41 @@ export default function Login() {
     setEmail(TEST_USER_EMAIL);
     setPassword(TEST_USER_PASSWORD);
     setSubmitting(true);
-    const { error } = await signIn(TEST_USER_EMAIL, TEST_USER_PASSWORD);
-    setSubmitting(false);
-    if (error) {
-      setError(error);
+
+    // Try to sign in first.
+    let { error: signInError } = await signIn(TEST_USER_EMAIL, TEST_USER_PASSWORD);
+
+    // If the test account doesn't exist yet, create it on the fly and retry.
+    if (signInError && /invalid login credentials/i.test(signInError)) {
+      const { error: signUpError } = await signUp(
+        TEST_USER_EMAIL,
+        TEST_USER_PASSWORD,
+        'Test Company',
+      );
+      if (signUpError) {
+        setSubmitting(false);
+        setError(signUpError);
+        return;
+      }
+      // Retry sign-in. If email confirmation is enabled in Supabase, this
+      // second attempt will also fail with "Invalid login credentials".
+      ({ error: signInError } = await signIn(TEST_USER_EMAIL, TEST_USER_PASSWORD));
+      if (signInError) {
+        setSubmitting(false);
+        setError(
+          'Test account was created but could not be signed in automatically. ' +
+            'Disable "Confirm email" in your Supabase Auth settings (or confirm ' +
+            'the user manually), then click "Use test account" again.',
+        );
+        return;
+      }
+    } else if (signInError) {
+      setSubmitting(false);
+      setError(signInError);
       return;
     }
+
+    setSubmitting(false);
     navigate('/');
   }
 
