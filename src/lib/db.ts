@@ -3,7 +3,7 @@
  * file-storage endpoints. Each logical table is persisted as a single JSON
  * file in the user's storage:
  *
- *     optifact-table-<name>.json   →   { rows: T[] }
+ *     optifact-table-<tenant>-<name>-<version>.json   →   { rows: T[] }
  *
  * The exposed query API mimics a small subset of the supabase-js builder so
  * existing call sites (`db.from('documents').select('*').eq('type','invoice')`)
@@ -15,9 +15,15 @@
  *   • Writes serialize through a per-table mutex to avoid lost updates from
  *     concurrent operations within the same tab. They are NOT safe across
  *     multiple browser tabs / devices (the gateway has no transactions).
- *   • "Update" replaces the table file (delete-then-upload). A failure
- *     between delete and upload could lose data; we upload the new copy
- *     before deleting the previous one to mitigate that.
+ *   • "Update" replaces the table file by uploading a brand-new version
+ *     (unique filename) and then deleting all older versions. This avoids
+ *     re-PUTting an existing object — the storage backend treats that as
+ *     a duplicate and surfaces a 500/409 — while still keeping a usable
+ *     copy on the server in case the cleanup step fails midway.
+ *   • Legacy filenames (`optifact-table-<tenant>-<name>.json`, no version
+ *     suffix) are still discovered on read so existing user data keeps
+ *     loading after the upgrade; the next save migrates them to a
+ *     versioned name and removes the legacy file.
  */
 
 import {
@@ -47,18 +53,57 @@ interface FileRef {
 const cache = new Map<string, { ref: FileRef | null; data: TableFile }>();
 const writeQueues = new Map<string, Promise<unknown>>();
 
-function fileNameFor(table: string): string {
+/**
+ * Stable prefix identifying every file (legacy or versioned) that backs a
+ * given (tenant, table) pair. The legacy filename is `${prefix}${SUFFIX}`;
+ * versioned filenames look like `${prefix}-<timestamp>-<rand>${SUFFIX}`.
+ */
+function tablePrefix(table: string): string {
   const user = getCurrentUser();
   // Scope by user_id so multi-account scenarios don't collide on the same device.
   const tenant = user?.user_id ?? 'anon';
-  return `${FILE_PREFIX}${tenant}-${table}${FILE_SUFFIX}`;
+  return `${FILE_PREFIX}${tenant}-${table}`;
+}
+
+/**
+ * Build a unique filename for a fresh write. Each save uploads under a new
+ * name so we never re-PUT an existing object — many storage backends
+ * (including the Supabase Storage that the Optifact api-gateway proxies)
+ * reject duplicate filenames with a 500/409, which previously surfaced as
+ * "Internal server error" on the second create/update of any table.
+ */
+function newFileNameFor(table: string): string {
+  const stamp = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${tablePrefix(table)}-${stamp}-${rand}${FILE_SUFFIX}`;
+}
+
+/**
+ * True when `name` is one of our backing files (legacy fixed name or any
+ * versioned variant) for the given table. The trailing `-` on the
+ * versioned check prevents accidentally matching files of a different table
+ * that happens to share a prefix (e.g. `documents` vs `documents_archive`).
+ */
+function isTableFileName(name: string, table: string): boolean {
+  const prefix = tablePrefix(table);
+  return name === `${prefix}${FILE_SUFFIX}` || name.startsWith(`${prefix}-`);
+}
+
+/**
+ * Return every storage file that backs `table` (legacy + all versions),
+ * ordered newest-first by created_at when available.
+ */
+async function listTableFiles(table: string): Promise<FileRef[]> {
+  const files = await listFiles();
+  return files
+    .filter((f) => isTableFileName(f.file_name, table))
+    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+    .map((f) => ({ file_id: f.id, file_name: f.file_name }));
 }
 
 async function findFile(table: string): Promise<FileRef | null> {
-  const target = fileNameFor(table);
-  const files = await listFiles();
-  const match = files.find((f) => f.file_name === target);
-  return match ? { file_id: match.id, file_name: match.file_name } : null;
+  const matches = await listTableFiles(table);
+  return matches[0] ?? null;
 }
 
 async function loadTable(table: string): Promise<TableFile> {
@@ -83,22 +128,30 @@ async function loadTable(table: string): Promise<TableFile> {
 }
 
 async function saveTable(table: string, data: TableFile): Promise<void> {
-  const target = fileNameFor(table);
-  const previous = cache.get(table)?.ref ?? (await findFile(table));
-  // Upload first, then delete the previous version, so a failure in between
-  // leaves a usable copy of the data on the server.
+  // Discover every existing version (legacy + versioned) so we can clean
+  // them up after a successful upload. Falling back to the just-loaded
+  // cache entry isn't enough because earlier writes may have left behind
+  // older versions on the server.
+  const previous = await listTableFiles(table);
+  // Upload under a fresh unique filename so we never re-PUT an existing
+  // object — the storage backend rejects duplicates with a 500/409.
+  const target = newFileNameFor(table);
   const uploaded = await uploadFile(target, JSON.stringify(data), 'application/json');
   cache.set(table, {
     ref: { file_id: uploaded.file_id, file_name: uploaded.file_name },
     data,
   });
-  if (previous && previous.file_id !== uploaded.file_id) {
-    try {
-      await deleteFile(previous.file_id);
-    } catch {
-      // best-effort cleanup of the stale copy
-    }
-  }
+  // Best-effort cleanup of every prior version. We never delete the file
+  // we just uploaded (defensive: in case the gateway returns the same id).
+  await Promise.all(
+    previous
+      .filter((p) => p.file_id !== uploaded.file_id)
+      .map((p) =>
+        deleteFile(p.file_id).catch(() => {
+          // best-effort cleanup of stale copies
+        }),
+      ),
+  );
 }
 
 function withWriteLock<T>(table: string, op: () => Promise<T>): Promise<T> {
