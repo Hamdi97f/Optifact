@@ -1,10 +1,37 @@
+/**
+ * Authentication hook backed by the Optifact api-gateway.
+ *
+ * The exported context shape mirrors the previous Supabase-based version
+ * (`session`, `user`, `signIn`, `signUp`, `signOut`) so existing call sites
+ * keep working unchanged.
+ */
+
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import type { Session, User } from '@supabase/supabase-js';
-import { supabase } from '@/lib/supabase';
+import {
+  type ApiUser,
+  getCurrentToken,
+  getCurrentUser,
+  login as apiLogin,
+  logout as apiLogout,
+  onSessionChange,
+  register as apiRegister,
+} from '@/lib/apiClient';
+import { resetDbCache } from '@/lib/db';
+
+/** Minimal user/session shape — kept compatible with the previous code. */
+export interface AppUser {
+  id: string;
+  email: string;
+}
+
+export interface AppSession {
+  token: string;
+  user: AppUser;
+}
 
 interface AuthContextValue {
-  session: Session | null;
-  user: User | null;
+  session: AppSession | null;
+  user: AppUser | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signUp: (
@@ -17,41 +44,73 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+function toAppUser(u: ApiUser | null): AppUser | null {
+  return u ? { id: u.user_id, email: u.email } : null;
+}
+
+function buildSession(u: ApiUser | null, token: string | null): AppSession | null {
+  if (!u || !token) return null;
+  return { token, user: { id: u.user_id, email: u.email } };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AppUser | null>(() => toAppUser(getCurrentUser()));
+  const [session, setSession] = useState<AppSession | null>(() =>
+    buildSession(getCurrentUser(), getCurrentToken()),
+  );
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session);
-      setLoading(false);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
-      setSession(newSession);
+    const off = onSessionChange((u) => {
+      setUser(toAppUser(u));
+      setSession(buildSession(u, getCurrentToken()));
+      // A different user → drop the in-memory table cache.
+      resetDbCache();
     });
     return () => {
-      sub.subscription.unsubscribe();
+      off();
     };
   }, []);
 
   const value: AuthContextValue = {
     session,
-    user: session?.user ?? null,
+    user,
     loading,
     async signIn(email, password) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      return { error: error?.message ?? null };
+      setLoading(true);
+      try {
+        await apiLogin(email, password);
+        return { error: null };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Sign-in failed' };
+      } finally {
+        setLoading(false);
+      }
     },
-    async signUp(email, password, companyName) {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { company_name: companyName } },
-      });
-      return { error: error?.message ?? null };
+    async signUp(email, password, _companyName) {
+      // The api-gateway doesn't store profile metadata at registration time,
+      // so `companyName` is currently unused. It can be persisted later in
+      // a `profiles` table once the user is signed in.
+      void _companyName;
+      setLoading(true);
+      try {
+        await apiRegister(email, password);
+        // Attempt to sign the user in immediately so the UX matches the old flow.
+        try {
+          await apiLogin(email, password);
+        } catch {
+          // Some gateways require a separate confirmation step; surface no
+          // error here so the caller can prompt the user to sign in.
+        }
+        return { error: null };
+      } catch (e) {
+        return { error: e instanceof Error ? e.message : 'Sign-up failed' };
+      } finally {
+        setLoading(false);
+      }
     },
     async signOut() {
-      await supabase.auth.signOut();
+      await apiLogout();
     },
   };
 

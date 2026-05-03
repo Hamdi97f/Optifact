@@ -1,21 +1,18 @@
-import { createClient } from '@supabase/supabase-js';
+/**
+ * Backwards-compatible façade so existing call sites that import
+ *   `import { supabase } from '@/lib/supabase'`
+ * continue to work after the migration to the api-gateway backend.
+ *
+ * `supabase.from(...)` is now a JSON-blob "table" backed by the gateway's
+ * file-storage endpoints (see ./db.ts and ./apiClient.ts).
+ */
 
-const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
+import { db } from './db';
+import { isApiConfigured } from './apiClient';
 
-if (!url || !anonKey) {
-  // Surfaces a clear, actionable message in dev instead of an opaque runtime crash.
-  // eslint-disable-next-line no-console
-  console.warn(
-    '[Optifact] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Copy `.env.example` to `.env` and fill them in.',
-  );
-}
+export const supabase = db;
+export { isApiConfigured };
 
-export const supabase = createClient(url ?? 'http://localhost:54321', anonKey ?? 'public-anon-key', {
-  auth: {
-    persistSession: true,
-    autoRefreshToken: true,
-  },
-});
-
-export const isSupabaseConfigured = Boolean(url && anonKey);
+// Kept for the existing Login.tsx warning banner; meaning is the same now
+// (i.e. "is the backend configured at all?").
+export const isSupabaseConfigured = isApiConfigured;

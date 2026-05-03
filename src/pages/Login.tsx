@@ -12,7 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { isApiConfigured } from '@/lib/apiClient';
 
 const TEST_USER_EMAIL = import.meta.env.VITE_TEST_USER_EMAIL ?? 'test@optifact.local';
 const TEST_USER_PASSWORD = import.meta.env.VITE_TEST_USER_PASSWORD ?? 'password123';
@@ -68,15 +68,15 @@ export default function Login() {
         setError(signUpError);
         return;
       }
-      // Retry sign-in. If email confirmation is enabled in Supabase, this
-      // second attempt will also fail with "Invalid login credentials".
+      // Our signUp() also attempts to sign the user in. If it didn't,
+      // try again explicitly so the navigation below can proceed.
       ({ error: signInError } = await signIn(TEST_USER_EMAIL, TEST_USER_PASSWORD));
       if (signInError) {
         setSubmitting(false);
         setError(
           'Test account was created but could not be signed in automatically. ' +
-            'Disable "Confirm email" in your Supabase Auth settings (or confirm ' +
-            'the user manually), then click "Use test account" again.',
+            'If your gateway requires email confirmation, confirm the user, ' +
+            'then click "Use test account" again.',
         );
         return;
       }
@@ -103,10 +103,10 @@ export default function Login() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {!isSupabaseConfigured && (
+          {!isApiConfigured && (
             <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
-              Supabase is not configured. Copy <code>.env.example</code> to <code>.env</code> and
-              set <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_ANON_KEY</code>.
+              The API gateway is not configured. Copy <code>.env.example</code> to <code>.env</code> and set
+              <code> VITE_API_GATEWAY_URL</code> and <code>VITE_API_GATEWAY_KEY</code>.
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">
