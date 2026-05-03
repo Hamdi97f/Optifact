@@ -77,7 +77,7 @@ function selectedFiscalStamp(settings: AppSettings, type: DocumentType): number 
 }
 
 function isExempt(client: Entity | null | undefined, taxId: string): boolean {
-  return Array.isArray(client?.tax_exemptions) && client!.tax_exemptions!.includes(taxId);
+  return Array.isArray(client?.tax_exemptions) && client.tax_exemptions.includes(taxId);
 }
 
 /**
