@@ -36,6 +36,7 @@ interface EntityDraft {
   address: string;
   tax_id: string;
   tax_exemptions: string[];
+  default_tax_id: string;
 }
 
 const EMPTY_DRAFT: EntityDraft = {
@@ -46,6 +47,7 @@ const EMPTY_DRAFT: EntityDraft = {
   address: '',
   tax_id: '',
   tax_exemptions: [],
+  default_tax_id: '',
 };
 
 export default function EntitiesPage() {
@@ -106,6 +108,7 @@ export default function EntitiesPage() {
       address: e.address ?? '',
       tax_id: e.tax_id ?? '',
       tax_exemptions: Array.isArray(e.tax_exemptions) ? [...e.tax_exemptions] : [],
+      default_tax_id: e.default_tax_id ?? '',
     });
   }
 
@@ -132,6 +135,7 @@ export default function EntitiesPage() {
         address: draft.address.trim() || null,
         tax_id: draft.tax_id.trim() || null,
         tax_exemptions: draft.tax_exemptions,
+        default_tax_id: draft.default_tax_id || null,
       };
       if (editing) {
         const res = await supabase.from('entities').update(payload).eq('id', editing.id);
@@ -248,6 +252,26 @@ export default function EntitiesPage() {
                   onChange={(ev) => setDraft({ ...draft, tax_id: ev.target.value })}
                   placeholder={t('common.optional')}
                 />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="e-default-tax">{t('entities.field.default_tax')}</Label>
+                <Select
+                  id="e-default-tax"
+                  value={draft.default_tax_id}
+                  onChange={(ev) =>
+                    setDraft({ ...draft, default_tax_id: ev.target.value })
+                  }
+                >
+                  <option value="">{t('entities.field.default_tax.default')}</option>
+                  {settings.tax.rates.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.rate}%)
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t('entities.field.default_tax.help')}
+                </p>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>{t('entities.field.tax_exemptions')}</Label>

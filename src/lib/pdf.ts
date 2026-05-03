@@ -9,7 +9,7 @@ import {
   formatNumber,
   formatQuantity,
 } from './format';
-import { computeTaxBreakdown } from './tax';
+import { computeTaxBreakdown, computeTotals } from './tax';
 
 const DOC_TITLES: Record<DocumentRecord['type'], string> = {
   quote: 'DEVIS',
@@ -99,13 +99,29 @@ export function generateDocumentPdf({ doc, items, client, profile, settings }: G
   }
 
   // ---- Items table ----
+  // Resolve a per-line tax label so the breakdown is visible row-by-row.
+  // Falls back to the document-level default tax for legacy rows that
+  // don't carry a `tax_id`.
+  const fallbackTaxId =
+    doc.type === 'purchase_order'
+      ? s.tax.default_purchase_tax_id
+      : s.tax.default_sales_tax_id;
+  const ratesById = new Map(s.tax.rates.map((r) => [r.id, r]));
+  function taxLabelFor(it: DocItem): string {
+    const id = it.tax_id ?? fallbackTaxId;
+    if (!id) return '—';
+    const rate = ratesById.get(id);
+    if (!rate) return '—';
+    return `${rate.name} (${formatNumber(Number(rate.rate) || 0, s, { minDecimals: 0, maxDecimals: 2 })}%)`;
+  }
   autoTable(pdf, {
     startY: blockTop + 38,
-    head: [['Description', 'Qté', 'Prix unitaire', 'Total HT']],
+    head: [['Description', 'Qté', 'Prix unitaire', 'Taxe', 'Total HT']],
     body: items.map((it) => [
       it.description ?? '',
       qtyStr(Number(it.qty)),
       moneyStr(Number(it.unit_price)),
+      taxLabelFor(it),
       moneyStr(Number(it.line_total ?? it.qty * it.unit_price)),
     ]),
     styles: { fontSize: 10, cellPadding: 3 },
@@ -113,7 +129,8 @@ export function generateDocumentPdf({ doc, items, client, profile, settings }: G
     columnStyles: {
       1: { halign: 'right' },
       2: { halign: 'right' },
-      3: { halign: 'right' },
+      3: { halign: 'left' },
+      4: { halign: 'right' },
     },
   });
 
@@ -130,8 +147,23 @@ export function generateDocumentPdf({ doc, items, client, profile, settings }: G
   ty += 6;
 
   // Tax breakdown — recompute from the persisted items + settings + client so
-  // combined taxes and customer exemptions render their per-line detail.
-  const taxLines = computeTaxBreakdown(Number(doc.total_ht) || 0, s, doc.type, client);
+  // combined taxes, customer exemptions, and per-line tax ids (item / entity
+  // scopes) all render their correct breakdown.
+  const recomputed = computeTotals(
+    items.map((it) => ({
+      product_id: it.product_id,
+      description: it.description ?? '',
+      qty: Number(it.qty) || 0,
+      unit_price: Number(it.unit_price) || 0,
+      tax_id: it.tax_id ?? null,
+    })),
+    doc.type,
+    { settings: s, client },
+  );
+  const taxLines =
+    recomputed.taxes.length > 0
+      ? recomputed.taxes
+      : computeTaxBreakdown(Number(doc.total_ht) || 0, s, doc.type, client);
   if (taxLines.length > 0) {
     for (const line of taxLines) {
       const pct = formatNumber(line.rate, s, { minDecimals: 0, maxDecimals: 2 });

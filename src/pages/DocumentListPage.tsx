@@ -213,6 +213,7 @@ export function DocumentListPage({
             description: it.description,
             qty: it.qty,
             unit_price: it.unit_price,
+            tax_id: it.tax_id ?? null,
           })),
         );
         if (itemsErr) throw itemsErr;

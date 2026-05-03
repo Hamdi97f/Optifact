@@ -51,6 +51,12 @@ interface ComputeOptions {
   taxRate?: number;
   /** Customer (or supplier) — used to honour `tax_exemptions`. */
   client?: Entity | null;
+  /**
+   * Product catalogue keyed by id, used to resolve `Product.tax_id` when
+   * `default_tax_source === 'item'`. Optional — missing products fall back
+   * to the settings default.
+   */
+  productsById?: Record<string, { tax_id?: string | null } | undefined>;
 }
 
 function selectedTaxId(settings: AppSettings, type: DocumentType): string | null {
@@ -81,6 +87,33 @@ function isExempt(client: Entity | null | undefined, taxId: string): boolean {
 }
 
 /**
+ * Resolve which tax id should apply to a single line, given the active
+ * `default_tax_source` and the available context (product, client). An
+ * explicit `item.tax_id` always wins so the user can override per line.
+ *
+ * Returns `null` when no tax applies (e.g. no default configured anywhere).
+ */
+export function resolveLineTaxId(
+  item: { tax_id?: string | null; product_id?: string | null },
+  type: DocumentType,
+  settings: AppSettings,
+  options: { product?: { tax_id?: string | null } | null; client?: Entity | null } = {},
+): string | null {
+  if (item.tax_id !== undefined && item.tax_id !== null) return item.tax_id;
+  const source = settings.tax.default_tax_source ?? 'document';
+  const fallback = selectedTaxId(settings, type);
+  if (source === 'item') {
+    const productTax = options.product?.tax_id ?? null;
+    return productTax || fallback;
+  }
+  if (source === 'entity') {
+    const entityTax = options.client?.default_tax_id ?? null;
+    return entityTax || fallback;
+  }
+  return fallback;
+}
+
+/**
  * Compute the breakdown of taxes for a document.
  *
  * - Resolves the document's selected tax (sales / purchase default).
@@ -98,11 +131,27 @@ export function computeTaxBreakdown(
   client?: Entity | null,
   options: { taxRate?: number } = {},
 ): TaxLine[] {
+  const selectedId = selectedTaxId(settings, type);
+  return computeBreakdownForTax(ht, settings, selectedId, client, options);
+}
+
+/**
+ * Compute the breakdown for an explicit tax id over a given HT base.
+ * Handles simple taxes (with optional `taxRate` override), combined taxes
+ * (with components walked in dependency order), and customer exemptions.
+ * Returns an empty array when the tax id is unknown / fully exempt.
+ */
+export function computeBreakdownForTax(
+  ht: number,
+  settings: AppSettings,
+  taxId: string | null | undefined,
+  client?: Entity | null,
+  options: { taxRate?: number } = {},
+): TaxLine[] {
   const decimals = settings.localization.amount_decimals;
   const round = (v: number) => roundTo(v, decimals);
 
-  const selectedId = selectedTaxId(settings, type);
-  const selected = findRate(settings, selectedId);
+  const selected = findRate(settings, taxId);
 
   // No configured tax — fall back to the explicit override (legacy behaviour).
   if (!selected) {
@@ -203,7 +252,9 @@ export function computeTaxBreakdown(
  * Compute the totals for a document.
  *
  *  - HT  = sum of qty * unit_price for each line
- *  - Taxes = breakdown returned by `computeTaxBreakdown`
+ *  - Taxes = breakdown returned by `computeTaxBreakdown` (document scope) or
+ *            per-line groups merged into one breakdown per tax id (item /
+ *            entity scopes)
  *  - tva = sum of all tax-line amounts (kept for the persisted column)
  *  - Timbre fiscal = settings amount, on the configured doc types
  *  - TTC = HT + Σtaxes + Timbre
@@ -213,19 +264,53 @@ export function computeTotals(
   type: DocumentType,
   options: ComputeOptions = {},
 ): DocumentTotals {
-  const { settings, client } = options;
+  const { settings, client, productsById } = options;
   const decimals = settings?.localization.amount_decimals ?? 3;
   const round = (v: number) => (settings ? roundTo(v, decimals) : round3(v));
 
-  const total_ht = round(
-    items.reduce((sum, it) => sum + (Number(it.qty) || 0) * (Number(it.unit_price) || 0), 0),
-  );
+  const lineHt = (it: DraftLineItem) =>
+    (Number(it.qty) || 0) * (Number(it.unit_price) || 0);
+  const total_ht = round(items.reduce((sum, it) => sum + lineHt(it), 0));
 
   let taxes: TaxLine[] = [];
   let tvaTotal = 0;
 
   if (settings) {
-    taxes = computeTaxBreakdown(total_ht, settings, type, client, { taxRate: options.taxRate });
+    const source = settings.tax.default_tax_source ?? 'document';
+    if (source === 'document') {
+      taxes = computeTaxBreakdown(total_ht, settings, type, client, {
+        taxRate: options.taxRate,
+      });
+    } else {
+      // Group line HTs by their resolved tax id, then run the breakdown
+      // per group and merge identical tax lines.
+      const bases = new Map<string, number>();
+      for (const it of items) {
+        const product =
+          it.product_id && productsById ? productsById[it.product_id] : undefined;
+        const taxId = resolveLineTaxId(it, type, settings, { product, client });
+        const key = taxId ?? '';
+        bases.set(key, (bases.get(key) ?? 0) + lineHt(it));
+      }
+      const merged = new Map<string, TaxLine>();
+      for (const [key, base] of bases) {
+        const taxId = key === '' ? null : key;
+        const lines = computeBreakdownForTax(round(base), settings, taxId, client);
+        for (const line of lines) {
+          const existing = merged.get(line.id);
+          if (existing) {
+            merged.set(line.id, {
+              ...existing,
+              base: round(existing.base + line.base),
+              amount: round(existing.amount + line.amount),
+            });
+          } else {
+            merged.set(line.id, line);
+          }
+        }
+      }
+      taxes = Array.from(merged.values());
+    }
     tvaTotal = round(taxes.reduce((s, l) => s + l.amount, 0));
   } else {
     // Legacy code path used by call sites that don't pass settings (tests, etc.).
@@ -242,6 +327,37 @@ export function computeTotals(
   const timbre_fiscal = round(timbre);
   const total_ttc = round(total_ht + tvaTotal + timbre_fiscal);
   return { total_ht, tva: tvaTotal, timbre_fiscal, total_ttc, taxes };
+}
+
+/**
+ * Compute a per-line tax label for display next to each item line. Returns
+ * one string per item in the same order — empty string when the line has
+ * no applicable tax (unknown id or fully exempt).
+ */
+export function computeLineTaxLabels(
+  items: DraftLineItem[],
+  type: DocumentType,
+  settings: AppSettings,
+  options: { client?: Entity | null; productsById?: Record<string, { tax_id?: string | null } | undefined> } = {},
+): { taxId: string | null; label: string; rate: number }[] {
+  return items.map((it) => {
+    const product =
+      it.product_id && options.productsById ? options.productsById[it.product_id] : undefined;
+    const taxId = resolveLineTaxId(it, type, settings, {
+      product,
+      client: options.client,
+    });
+    const rate = findRate(settings, taxId);
+    if (!rate) return { taxId: null, label: '', rate: 0 };
+    if (rate.type !== 'combined' && isExempt(options.client, rate.id)) {
+      return { taxId, label: '—', rate: 0 };
+    }
+    return {
+      taxId,
+      label: `${rate.name} (${Number(rate.rate) || 0}%)`,
+      rate: Number(rate.rate) || 0,
+    };
+  });
 }
 
 /** Effective VAT rate (decimal) used for `type` given current settings. */

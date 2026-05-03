@@ -5,7 +5,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
 import { useI18n } from '@/lib/i18n';
-import { computeTotals, effectiveFiscalStamp } from '@/lib/tax';
+import { computeTotals, effectiveFiscalStamp, resolveLineTaxId } from '@/lib/tax';
 import { allocateNumber, previewNumber } from '@/lib/numbering';
 import { formatMoney, formatNumber, roundTo } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -86,9 +86,27 @@ export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps
     [entities, clientId],
   );
 
+  const productsById = useMemo(() => {
+    const map: Record<string, Product> = {};
+    for (const p of products) map[p.id] = p;
+    return map;
+  }, [products]);
+
   const totals = useMemo(
-    () => computeTotals(items, type, { settings, client: selectedClient }),
-    [items, type, settings, selectedClient],
+    () => computeTotals(items, type, { settings, client: selectedClient, productsById }),
+    [items, type, settings, selectedClient, productsById],
+  );
+
+  /** Resolved tax id per line (after applying source rules + overrides). */
+  const lineTaxIds = useMemo(
+    () =>
+      items.map((it) =>
+        resolveLineTaxId(it, type, settings, {
+          product: it.product_id ? productsById[it.product_id] : null,
+          client: selectedClient,
+        }),
+      ),
+    [items, type, settings, productsById, selectedClient],
   );
   const numberPreview = useMemo(
     () => previewNumber(settings, type, new Date(date || Date.now())),
@@ -174,13 +192,16 @@ export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps
       const qtyDecimals = settings.localization.quantity_decimals;
       const priceDecimals = settings.localization.unit_price_decimals;
       const { error: itemsErr } = await supabase.from('doc_items').insert(
-        items.map((it) => ({
+        items.map((it, i) => ({
           tenant_id: user.id,
           doc_id: (doc as { id: string }).id,
           product_id: it.product_id,
           description: it.description || null,
           qty: roundTo(Number(it.qty), qtyDecimals),
           unit_price: roundTo(Number(it.unit_price), priceDecimals),
+          // Persist the resolved tax id (line override OR scope-based default)
+          // so the PDF can render the per-line tax deterministically.
+          tax_id: lineTaxIds[i] ?? null,
         })),
       );
       if (itemsErr) throw itemsErr;
@@ -296,7 +317,7 @@ export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps
                   key={i}
                   className="grid gap-2 rounded-lg border p-3 sm:grid-cols-12 sm:items-end"
                 >
-                  <div className="space-y-1.5 sm:col-span-4">
+                  <div className="space-y-1.5 sm:col-span-3">
                     <Label>{t('doccreate.field.product')}</Label>
                     <Select
                       value={it.product_id ?? ''}
@@ -310,7 +331,7 @@ export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps
                       ))}
                     </Select>
                   </div>
-                  <div className="space-y-1.5 sm:col-span-4">
+                  <div className="space-y-1.5 sm:col-span-3">
                     <Label>{t('doccreate.field.description')}</Label>
                     <Input
                       value={it.description}
@@ -336,6 +357,30 @@ export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps
                       value={it.unit_price}
                       onChange={(e) => updateItem(i, { unit_price: Number(e.target.value) })}
                     />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label>{t('doccreate.field.tax')}</Label>
+                    <Select
+                      value={it.tax_id ?? ''}
+                      onChange={(e) =>
+                        updateItem(i, { tax_id: e.target.value === '' ? null : e.target.value })
+                      }
+                    >
+                      <option value="">
+                        {t('doccreate.field.tax.default')}
+                        {(() => {
+                          const resolved = lineTaxIds[i];
+                          if (!resolved) return '';
+                          const r = settings.tax.rates.find((x) => x.id === resolved);
+                          return r ? ` — ${r.name} (${r.rate}%)` : '';
+                        })()}
+                      </option>
+                      {settings.tax.rates.map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} ({r.rate}%)
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                   <div className="flex items-center justify-end sm:col-span-1">
                     <Button
@@ -370,19 +415,29 @@ export function DocumentCreatePage({ type, redirectTo }: DocumentCreatePageProps
                 </div>
               </div>
               <ul className="divide-y rounded-lg border">
-                {items.map((it, i) => (
-                  <li key={i} className="flex items-center justify-between p-3 text-sm">
-                    <div>
-                      <div className="font-medium">{it.description || '—'}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {it.qty} × {formatMoney(Number(it.unit_price), settings)}
+                {items.map((it, i) => {
+                  const taxId = lineTaxIds[i];
+                  const taxRate = taxId ? settings.tax.rates.find((r) => r.id === taxId) : null;
+                  return (
+                    <li key={i} className="flex items-center justify-between p-3 text-sm">
+                      <div>
+                        <div className="font-medium">{it.description || '—'}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {it.qty} × {formatMoney(Number(it.unit_price), settings)}
+                          {taxRate && (
+                            <>
+                              {' · '}
+                              {taxRate.name} ({taxRate.rate}%)
+                            </>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <div className="tabular-nums">
-                      {formatMoney((Number(it.qty) || 0) * (Number(it.unit_price) || 0), settings)}
-                    </div>
-                  </li>
-                ))}
+                      <div className="tabular-nums">
+                        {formatMoney((Number(it.qty) || 0) * (Number(it.unit_price) || 0), settings)}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}

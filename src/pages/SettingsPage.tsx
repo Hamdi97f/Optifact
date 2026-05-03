@@ -818,6 +818,24 @@ function TaxTab({
                 ))}
               </Select>
             </Field>
+            <Field label={t('settings.tax.default_source')} className="sm:col-span-2">
+              <Select
+                value={tax.default_tax_source ?? 'document'}
+                onChange={(e) =>
+                  onChange({
+                    ...tax,
+                    default_tax_source: e.target.value as typeof tax.default_tax_source,
+                  })
+                }
+              >
+                <option value="document">{t('settings.tax.default_source.document')}</option>
+                <option value="item">{t('settings.tax.default_source.item')}</option>
+                <option value="entity">{t('settings.tax.default_source.entity')}</option>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t('settings.tax.default_source.help')}
+              </p>
+            </Field>
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
