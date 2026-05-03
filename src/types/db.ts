@@ -30,6 +30,12 @@ export interface Product {
   sale_price: number;
   stock_qty: number;
   min_stock_alert: number;
+  /**
+   * Default tax rate id for this product (references `TaxRate.id`).
+   * Used when `TaxSettings.default_tax_source === 'item'` to pick the per-line
+   * tax. Falls back to the settings default tax when null.
+   */
+  tax_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -49,6 +55,12 @@ export interface Entity {
    * tax) is automatically skipped from the totals.
    */
   tax_exemptions?: string[];
+  /**
+   * Default tax rate id for this entity (references `TaxRate.id`).
+   * Used when `TaxSettings.default_tax_source === 'entity'` to pick the
+   * per-line tax. Falls back to the settings default tax when null.
+   */
+  default_tax_id?: string | null;
 }
 
 export interface DocItem {
@@ -59,6 +71,12 @@ export interface DocItem {
   description: string | null;
   qty: number;
   unit_price: number;
+  /**
+   * Tax rate id applied to this line (references `TaxRate.id`). Persisted
+   * so the PDF can render the tax beside each line and totals can be
+   * recomputed deterministically. Optional for legacy rows.
+   */
+  tax_id?: string | null;
   line_total: number;
 }
 
@@ -96,4 +114,6 @@ export interface DraftLineItem {
   description: string;
   qty: number;
   unit_price: number;
+  /** Optional explicit tax rate id for this line (overrides the resolver). */
+  tax_id?: string | null;
 }

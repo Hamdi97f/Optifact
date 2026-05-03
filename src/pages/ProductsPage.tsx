@@ -8,6 +8,7 @@ import { formatMoney, formatQuantity, roundTo } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select } from '@/components/ui/select';
 import {
   Card,
   CardContent,
@@ -35,6 +36,7 @@ interface ProductDraft {
   sale_price: number;
   stock_qty: number;
   min_stock_alert: number;
+  tax_id: string;
 }
 
 const EMPTY_DRAFT: ProductDraft = {
@@ -44,6 +46,7 @@ const EMPTY_DRAFT: ProductDraft = {
   sale_price: 0,
   stock_qty: 0,
   min_stock_alert: 0,
+  tax_id: '',
 };
 
 export default function ProductsPage() {
@@ -97,6 +100,7 @@ export default function ProductsPage() {
       sale_price: Number(p.sale_price),
       stock_qty: Number(p.stock_qty),
       min_stock_alert: Number(p.min_stock_alert),
+      tax_id: p.tax_id ?? '',
     });
   }
 
@@ -124,6 +128,7 @@ export default function ProductsPage() {
         sale_price: roundTo(Number(draft.sale_price) || 0, priceDecimals),
         stock_qty: roundTo(Number(draft.stock_qty) || 0, qtyDecimals),
         min_stock_alert: roundTo(Number(draft.min_stock_alert) || 0, qtyDecimals),
+        tax_id: draft.tax_id || null,
       };
       if (editing) {
         const res = await supabase.from('products').update(payload).eq('id', editing.id);
@@ -252,6 +257,24 @@ export default function ProductsPage() {
                     setDraft({ ...draft, min_stock_alert: Number(e.target.value) })
                   }
                 />
+              </div>
+              <div className="space-y-1.5 sm:col-span-2">
+                <Label htmlFor="p-tax">{t('products.field.tax')}</Label>
+                <Select
+                  id="p-tax"
+                  value={draft.tax_id}
+                  onChange={(e) => setDraft({ ...draft, tax_id: e.target.value })}
+                >
+                  <option value="">{t('products.field.tax.default')}</option>
+                  {settings.tax.rates.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.rate}%)
+                    </option>
+                  ))}
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {t('products.field.tax.help')}
+                </p>
               </div>
             </div>
 

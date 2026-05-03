@@ -87,6 +87,7 @@ export function defaultSettings(): AppSettings {
       rates: taxRates,
       default_sales_tax_id: tvaId,
       default_purchase_tax_id: tvaId,
+      default_tax_source: 'document',
       prices_include_tax: false,
       reverse_charge: false,
       fiscal_stamp_amount: 1.0,

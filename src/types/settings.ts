@@ -21,6 +21,19 @@ export type SymbolPosition = 'prefix' | 'suffix';
 
 export type ResetCycle = 'never' | 'yearly' | 'monthly';
 
+/**
+ * Where the default tax for a document line comes from when the user
+ * doesn't pick one explicitly.
+ *
+ * - `'document'`  → one tax for the whole document (the settings default
+ *                   for sales / purchases). Current legacy behaviour.
+ * - `'item'`      → each line uses its product's `Product.tax_id`,
+ *                   falling back to the settings default.
+ * - `'entity'`    → all lines use the selected client/supplier's
+ *                   `Entity.default_tax_id`, falling back to the settings default.
+ */
+export type DefaultTaxSource = 'document' | 'item' | 'entity';
+
 export type TaxType = 'vat' | 'withholding' | 'stamp' | 'other' | 'combined';
 
 /** How a single component of a `combined` tax computes its base. */
@@ -147,6 +160,11 @@ export interface TaxSettings {
   default_sales_tax_id: string | null;
   /** Id of the default tax for purchase documents. */
   default_purchase_tax_id: string | null;
+  /**
+   * Where the per-line tax comes from when the user doesn't pick one.
+   * See `DefaultTaxSource`. Defaults to `'document'` (legacy behaviour).
+   */
+  default_tax_source: DefaultTaxSource;
   /** Whether unit prices include tax by default. */
   prices_include_tax: boolean;
   /** Reverse-charge applies (B2B intra-EU, etc.). */
