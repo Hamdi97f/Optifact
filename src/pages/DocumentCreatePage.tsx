@@ -3,8 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
-import { computeTotals, TIMBRE_FISCAL, TVA_RATE } from '@/lib/tax';
-import { cn, formatTND, round3 } from '@/lib/utils';
+import { useSettings } from '@/hooks/useSettings';
+import { computeTotals, effectiveFiscalStamp, effectiveTaxRate } from '@/lib/tax';
+import { allocateNumber, previewNumber } from '@/lib/numbering';
+import { formatMoney, formatNumber, roundTo } from '@/lib/format';
+import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,6 +44,7 @@ type StepId = (typeof STEPS)[number]['id'];
 
 export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePageProps) {
   const { user } = useAuth();
+  const { settings, setSettings } = useSettings();
   const navigate = useNavigate();
 
   const [step, setStep] = useState<StepId>('header');
@@ -54,8 +58,14 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
   const [number, setNumber] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [clientId, setClientId] = useState<string>('');
-  const [notes, setNotes] = useState('');
+  const [notes, setNotes] = useState(() => settings.documents.notes_per_type[type] ?? '');
   const [status, setStatus] = useState<DocumentStatus>('issued');
+
+  // When the type or default note changes (e.g. after reading settings), refresh the field
+  // so users see the configured default rather than an empty field.
+  useEffect(() => {
+    setNotes((current) => (current ? current : settings.documents.notes_per_type[type] ?? ''));
+  }, [type, settings.documents.notes_per_type]);
 
   // Line items
   const [items, setItems] = useState<DraftLineItem[]>([
@@ -75,7 +85,14 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
     })();
   }, [user, type]);
 
-  const totals = useMemo(() => computeTotals(items, type), [items, type]);
+  const totals = useMemo(
+    () => computeTotals(items, type, { settings }),
+    [items, type, settings],
+  );
+  const numberPreview = useMemo(
+    () => previewNumber(settings, type, new Date(date || Date.now())),
+    [settings, type, date],
+  );
 
   function updateItem(index: number, patch: Partial<DraftLineItem>) {
     setItems((prev) => {
@@ -127,13 +144,24 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
     setSaving(true);
     setError(null);
     try {
+      // Allocate the next number from the configured sequence when the user
+      // didn't override it. The settings counter is advanced after a successful
+      // save so failed attempts don't burn numbers.
+      let allocatedNumber = number.trim();
+      let advancedSettings = settings;
+      if (!allocatedNumber) {
+        const allocation = allocateNumber(settings, type, new Date(date || Date.now()));
+        allocatedNumber = allocation.number;
+        advancedSettings = allocation.settings;
+      }
+
       const { data: doc, error: docErr } = await supabase
         .from('documents')
         .insert({
           tenant_id: user.id,
           type,
           status,
-          number: number || null,
+          number: allocatedNumber || null,
           date,
           client_id: clientId || null,
           total_ht: totals.total_ht,
@@ -146,17 +174,29 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
         .single();
       if (docErr || !doc) throw docErr ?? new Error('Failed to create document');
 
+      const qtyDecimals = settings.localization.quantity_decimals;
+      const priceDecimals = settings.localization.unit_price_decimals;
       const { error: itemsErr } = await supabase.from('doc_items').insert(
         items.map((it) => ({
           tenant_id: user.id,
           doc_id: (doc as { id: string }).id,
           product_id: it.product_id,
           description: it.description || null,
-          qty: round3(Number(it.qty)),
-          unit_price: round3(Number(it.unit_price)),
+          qty: roundTo(Number(it.qty), qtyDecimals),
+          unit_price: roundTo(Number(it.unit_price), priceDecimals),
         })),
       );
       if (itemsErr) throw itemsErr;
+
+      // Persist the advanced numbering counter only after both writes succeed.
+      if (advancedSettings !== settings) {
+        try {
+          await setSettings(advancedSettings);
+        } catch {
+          // Non-fatal: the document was saved with the right number; the
+          // counter will catch up on the next allocation attempt.
+        }
+      }
 
       navigate(redirectTo);
     } catch (e) {
@@ -192,7 +232,7 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                   id="number"
                   value={number}
                   onChange={(e) => setNumber(e.target.value)}
-                  placeholder="Auto if left empty"
+                  placeholder={`Auto: ${numberPreview}`}
                 />
               </div>
               <div className="space-y-1.5">
@@ -305,7 +345,7 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                     </Button>
                   </div>
                   <div className="text-right text-xs text-muted-foreground sm:col-span-12">
-                    Line total: {formatTND((Number(it.qty) || 0) * (Number(it.unit_price) || 0))}
+                    Line total: {formatMoney((Number(it.qty) || 0) * (Number(it.unit_price) || 0), settings)}
                   </div>
                 </div>
               ))}
@@ -329,11 +369,11 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
                     <div>
                       <div className="font-medium">{it.description || '—'}</div>
                       <div className="text-xs text-muted-foreground">
-                        {it.qty} × {formatTND(Number(it.unit_price))}
+                        {it.qty} × {formatMoney(Number(it.unit_price), settings)}
                       </div>
                     </div>
                     <div className="tabular-nums">
-                      {formatTND((Number(it.qty) || 0) * (Number(it.unit_price) || 0))}
+                      {formatMoney((Number(it.qty) || 0) * (Number(it.unit_price) || 0), settings)}
                     </div>
                   </li>
                 ))}
@@ -341,7 +381,7 @@ export function DocumentCreatePage({ type, title, redirectTo }: DocumentCreatePa
             </div>
           )}
 
-          <TotalsBox totals={totals} />
+          <TotalsBox totals={totals} type={type} />
 
           {error && (
             <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 text-sm text-destructive">
@@ -402,21 +442,27 @@ function Stepper({ step }: { step: StepId }) {
 
 function TotalsBox({
   totals,
+  type,
 }: {
   totals: { total_ht: number; tva: number; timbre_fiscal: number; total_ttc: number };
+  type: DocumentType;
 }) {
+  const { settings } = useSettings();
+  const tvaPctRaw = effectiveTaxRate(settings, type) * 100;
+  const tvaPctLabel = formatNumber(tvaPctRaw, settings, { minDecimals: 0, maxDecimals: 2 });
+  const stamp = effectiveFiscalStamp(settings, type);
   return (
     <div className="ml-auto w-full max-w-xs space-y-1 rounded-lg border p-4 text-sm">
-      <Row label="Total HT" value={formatTND(totals.total_ht)} />
-      <Row label={`TVA (${(TVA_RATE * 100).toFixed(0)}%)`} value={formatTND(totals.tva)} />
+      <Row label="Total HT" value={formatMoney(totals.total_ht, settings)} />
+      <Row label={`TVA (${tvaPctLabel}%)`} value={formatMoney(totals.tva, settings)} />
       {totals.timbre_fiscal > 0 && (
         <Row
-          label={`Timbre fiscal (${TIMBRE_FISCAL.toFixed(3)})`}
-          value={formatTND(totals.timbre_fiscal)}
+          label={`Timbre fiscal (${formatNumber(stamp, settings)})`}
+          value={formatMoney(totals.timbre_fiscal, settings)}
         />
       )}
       <div className="mt-2 border-t pt-2">
-        <Row label="Total TTC" value={formatTND(totals.total_ttc)} bold />
+        <Row label="Total TTC" value={formatMoney(totals.total_ttc, settings)} bold />
       </div>
     </div>
   );

@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
-import { Package, Settings as SettingsIcon, Truck, Users, Wallet } from 'lucide-react';
+import { Package, Truck, Users, Wallet } from 'lucide-react';
 import { AuthProvider } from '@/hooks/useAuth';
+import { SettingsProvider } from '@/hooks/useSettings';
+import { I18nProvider } from '@/lib/i18n';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import Dashboard from '@/pages/Dashboard';
@@ -8,11 +10,14 @@ import Login from '@/pages/Login';
 import { DocumentListPage } from '@/pages/DocumentListPage';
 import { DocumentCreatePage } from '@/pages/DocumentCreatePage';
 import { PlaceholderPage } from '@/pages/PlaceholderPage';
+import SettingsPage from '@/pages/SettingsPage';
 
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <SettingsProvider>
+        <I18nProvider>
+          <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route
@@ -135,13 +140,7 @@ export default function App() {
             />
             <Route
               path="settings"
-              element={
-                <PlaceholderPage
-                  title="Settings"
-                  description="Company profile, branding, and preferences."
-                  icon={SettingsIcon}
-                />
-              }
+              element={<SettingsPage />}
             />
 
             <Route
@@ -159,6 +158,8 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+        </I18nProvider>
+      </SettingsProvider>
     </AuthProvider>
   );
 }

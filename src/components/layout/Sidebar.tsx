@@ -13,22 +13,26 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/useAuth';
+import { useI18n } from '@/lib/i18n';
+import { useSettings } from '@/hooks/useSettings';
 import { Button } from '@/components/ui/button';
 
 const NAV_ITEMS = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/invoices', label: 'Invoices', icon: FileText },
-  { to: '/quotes', label: 'Quotes', icon: FileText },
-  { to: '/deliveries', label: 'Deliveries', icon: Truck },
-  { to: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
-  { to: '/products', label: 'Products', icon: Package },
-  { to: '/clients', label: 'Clients & Suppliers', icon: Users },
-  { to: '/payments', label: 'Payments', icon: Wallet },
-  { to: '/settings', label: 'Settings', icon: Settings },
+  { to: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, end: true },
+  { to: '/invoices', labelKey: 'nav.invoices', icon: FileText },
+  { to: '/quotes', labelKey: 'nav.quotes', icon: FileText },
+  { to: '/deliveries', labelKey: 'nav.deliveries', icon: Truck },
+  { to: '/purchase-orders', labelKey: 'nav.purchase_orders', icon: ShoppingCart },
+  { to: '/products', labelKey: 'nav.products', icon: Package },
+  { to: '/clients', labelKey: 'nav.clients', icon: Users },
+  { to: '/payments', labelKey: 'nav.payments', icon: Wallet },
+  { to: '/settings', labelKey: 'nav.settings', icon: Settings },
 ];
 
 export function Sidebar() {
   const { signOut, user } = useAuth();
+  const { t } = useI18n();
+  const { settings } = useSettings();
   const navigate = useNavigate();
 
   async function handleSignOut() {
@@ -36,20 +40,32 @@ export function Sidebar() {
     navigate('/login');
   }
 
+  const brandName = settings.company.trade_name || settings.company.legal_name || 'Optifact';
+
   return (
     <aside className="hidden md:flex w-64 shrink-0 flex-col border-r bg-card">
       <div className="flex h-16 items-center gap-2 border-b px-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-          <Sparkles className="h-5 w-5" />
+        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-primary text-primary-foreground">
+          {settings.company.logo_data_url ? (
+            <img
+              src={settings.company.logo_data_url}
+              alt=""
+              className="h-full w-full object-contain"
+            />
+          ) : (
+            <Sparkles className="h-5 w-5" />
+          )}
         </div>
-        <div>
-          <div className="text-sm font-semibold leading-tight">Optifact</div>
-          <div className="text-xs text-muted-foreground">SaaS ERP</div>
+        <div className="min-w-0">
+          <div className="truncate text-sm font-semibold leading-tight" title={brandName}>
+            {brandName}
+          </div>
+          <div className="text-xs text-muted-foreground">{t('app.tagline')}</div>
         </div>
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+        {NAV_ITEMS.map(({ to, labelKey, icon: Icon, end }) => (
           <NavLink
             key={to}
             to={to}
@@ -64,7 +80,7 @@ export function Sidebar() {
             }
           >
             <Icon className="h-4 w-4" />
-            {label}
+            {t(labelKey)}
           </NavLink>
         ))}
       </nav>
@@ -74,7 +90,7 @@ export function Sidebar() {
           {user?.email ?? 'Guest'}
         </div>
         <Button variant="outline" size="sm" className="w-full" onClick={handleSignOut}>
-          <LogOut className="h-4 w-4" /> Sign out
+          <LogOut className="h-4 w-4" /> {t('auth.signout')}
         </Button>
       </div>
     </aside>
