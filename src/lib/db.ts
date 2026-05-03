@@ -73,31 +73,42 @@ function tablePrefix(table: string): string {
  * "Internal server error" on the second create/update of any table.
  */
 function newFileNameFor(table: string): string {
+  // UUID guarantees uniqueness even when multiple saves land in the same
+  // millisecond; the leading timestamp keeps filenames roughly chronological
+  // for human inspection in the storage console.
   const stamp = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${tablePrefix(table)}-${stamp}-${rand}${FILE_SUFFIX}`;
+  return `${tablePrefix(table)}-${stamp}-${genId()}${FILE_SUFFIX}`;
 }
 
 /**
  * True when `name` is one of our backing files (legacy fixed name or any
  * versioned variant) for the given table. The trailing `-` on the
  * versioned check prevents accidentally matching files of a different table
- * that happens to share a prefix (e.g. `documents` vs `documents_archive`).
+ * that happens to share a prefix (e.g. `documents` vs `documents_archive`),
+ * and the `.json` suffix check prevents matching unrelated artefacts a user
+ * might happen to have under a similar prefix.
  */
 function isTableFileName(name: string, table: string): boolean {
+  if (!name.endsWith(FILE_SUFFIX)) return false;
   const prefix = tablePrefix(table);
   return name === `${prefix}${FILE_SUFFIX}` || name.startsWith(`${prefix}-`);
 }
 
 /**
  * Return every storage file that backs `table` (legacy + all versions),
- * ordered newest-first by created_at when available.
+ * ordered newest-first. We sort primarily by `created_at` (the gateway's
+ * authoritative timestamp) and fall back to the filename — which embeds
+ * the client-side write timestamp — so ordering stays stable even if
+ * `created_at` is missing or two files share it.
  */
 async function listTableFiles(table: string): Promise<FileRef[]> {
   const files = await listFiles();
   return files
     .filter((f) => isTableFileName(f.file_name, table))
-    .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''))
+    .sort((a, b) => {
+      const byTime = (b.created_at ?? '').localeCompare(a.created_at ?? '');
+      return byTime !== 0 ? byTime : b.file_name.localeCompare(a.file_name);
+    })
     .map((f) => ({ file_id: f.id, file_name: f.file_name }));
 }
 
