@@ -4,6 +4,7 @@ import { Download, FileText, Plus, Search, FilePlus2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
+import { useI18n } from '@/lib/i18n';
 import { formatDate, formatMoney } from '@/lib/format';
 import { effectiveFiscalStamp } from '@/lib/tax';
 import { Button } from '@/components/ui/button';
@@ -40,8 +41,6 @@ import type {
 interface DocumentListPageProps {
   /** The document type this page lists. */
   type: DocumentType;
-  title: string;
-  description: string;
   /** Path used for the "New" button (e.g. '/invoices/new'). */
   newPath: string;
   /**
@@ -51,7 +50,10 @@ interface DocumentListPageProps {
   enableQuoteConversion?: boolean;
 }
 
-const STATUS_VARIANTS: Record<DocumentStatus, 'default' | 'success' | 'warning' | 'destructive' | 'secondary' | 'outline'> = {
+const STATUS_VARIANTS: Record<
+  DocumentStatus,
+  'default' | 'success' | 'warning' | 'destructive' | 'secondary' | 'outline'
+> = {
   draft: 'secondary',
   issued: 'default',
   paid: 'success',
@@ -62,19 +64,21 @@ const STATUS_VARIANTS: Record<DocumentStatus, 'default' | 'success' | 'warning' 
 
 export function DocumentListPage({
   type,
-  title,
-  description,
   newPath,
   enableQuoteConversion = false,
 }: DocumentListPageProps) {
   const { user } = useAuth();
   const { settings } = useSettings();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [docs, setDocs] = useState<DocumentRecord[]>([]);
   const [clients, setClients] = useState<Record<string, Entity>>({});
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<DocumentStatus | 'all'>('all');
   const [busyId, setBusyId] = useState<string | null>(null);
+
+  const title = t(`doclist.${type}.title`);
+  const description = t(`doclist.${type}.desc`);
 
   async function load() {
     setLoading(true);
@@ -112,7 +116,18 @@ export function DocumentListPage({
   }, [docs, clients, search, statusFilter]);
 
   function exportCsv() {
-    const header = ['Number', 'Date', 'Client', 'Status', 'Total HT', 'TVA', 'Timbre', 'Total TTC'];
+    // CSV header uses the active translations so the exported file matches
+    // what the user sees on screen.
+    const header = [
+      t('doclist.col.number'),
+      t('common.date'),
+      t('doclist.col.client'),
+      t('common.status'),
+      t('doccreate.totals.ht'),
+      t('doccreate.totals.tva'),
+      t('doccreate.totals.stamp'),
+      t('doclist.col.total_ttc'),
+    ];
     const rows = filtered.map((d) => [
       d.number ?? d.id.slice(0, 8),
       d.date,
@@ -208,7 +223,7 @@ export function DocumentListPage({
     } catch (e) {
       // eslint-disable-next-line no-console
       console.error('convertToInvoice failed', e);
-      alert('Failed to convert quote. Check the console for details.');
+      alert(t('doclist.convert_failed'));
     } finally {
       setBusyId(null);
     }
@@ -223,11 +238,11 @@ export function DocumentListPage({
         </div>
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={exportCsv} disabled={filtered.length === 0}>
-            <Download className="h-4 w-4" /> Export CSV
+            <Download className="h-4 w-4" /> {t('common.export_csv')}
           </Button>
           <Link to={newPath}>
             <Button>
-              <Plus className="h-4 w-4" /> New
+              <Plus className="h-4 w-4" /> {t('common.new')}
             </Button>
           </Link>
         </div>
@@ -235,18 +250,18 @@ export function DocumentListPage({
 
       <Card>
         <CardHeader>
-          <CardTitle>All {title.toLowerCase()}</CardTitle>
-          <CardDescription>Search by number or client, filter by status.</CardDescription>
+          <CardTitle>{title}</CardTitle>
+          <CardDescription>{t('doclist.search_help')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search…"
-                className="pl-9"
+                placeholder={t('common.search_placeholder')}
+                className="ps-9"
               />
             </div>
             <Select
@@ -254,13 +269,13 @@ export function DocumentListPage({
               onChange={(e) => setStatusFilter(e.target.value as DocumentStatus | 'all')}
               className="sm:w-48"
             >
-              <option value="all">All statuses</option>
-              <option value="draft">Draft</option>
-              <option value="issued">Issued</option>
-              <option value="paid">Paid</option>
-              <option value="partially_paid">Partially paid</option>
-              <option value="cancelled">Cancelled</option>
-              <option value="converted">Converted</option>
+              <option value="all">{t('doclist.all_statuses')}</option>
+              <option value="draft">{t('status.draft')}</option>
+              <option value="issued">{t('status.issued')}</option>
+              <option value="paid">{t('status.paid')}</option>
+              <option value="partially_paid">{t('status.partially_paid')}</option>
+              <option value="cancelled">{t('status.cancelled')}</option>
+              <option value="converted">{t('status.converted')}</option>
             </Select>
           </div>
 
@@ -273,12 +288,12 @@ export function DocumentListPage({
           ) : filtered.length === 0 ? (
             <EmptyState
               icon={FileText}
-              title={`No ${title.toLowerCase()} yet`}
-              description="Create your first document to get started."
+              title={t(`doclist.empty.${type}`)}
+              description={t('doclist.empty.desc')}
               action={
                 <Link to={newPath}>
                   <Button>
-                    <Plus className="h-4 w-4" /> New
+                    <Plus className="h-4 w-4" /> {t('common.new')}
                   </Button>
                 </Link>
               }
@@ -287,12 +302,12 @@ export function DocumentListPage({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Total TTC</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('doclist.col.number')}</TableHead>
+                  <TableHead>{t('common.date')}</TableHead>
+                  <TableHead>{t('doclist.col.client')}</TableHead>
+                  <TableHead>{t('common.status')}</TableHead>
+                  <TableHead className="text-end">{t('doclist.col.total_ttc')}</TableHead>
+                  <TableHead className="text-end">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -304,12 +319,12 @@ export function DocumentListPage({
                       {d.client_id ? clients[d.client_id]?.name ?? '—' : '—'}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={STATUS_VARIANTS[d.status]}>{d.status}</Badge>
+                      <Badge variant={STATUS_VARIANTS[d.status]}>{t(`status.${d.status}`)}</Badge>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell className="text-end tabular-nums">
                       {formatMoney(Number(d.total_ttc), settings)}
                     </TableCell>
-                    <TableCell className="text-right">
+                    <TableCell className="text-end">
                       <div className="flex justify-end gap-2">
                         {enableQuoteConversion && d.status === 'issued' && (
                           <Button
@@ -318,7 +333,7 @@ export function DocumentListPage({
                             onClick={() => convertToInvoice(d)}
                             disabled={busyId === d.id}
                           >
-                            <FilePlus2 className="h-4 w-4" /> To invoice
+                            <FilePlus2 className="h-4 w-4" /> {t('doclist.to_invoice')}
                           </Button>
                         )}
                         <Button

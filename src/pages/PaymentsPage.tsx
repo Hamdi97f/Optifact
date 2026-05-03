@@ -3,6 +3,7 @@ import { Search, Trash2, Wallet, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/hooks/useAuth';
 import { useSettings } from '@/hooks/useSettings';
+import { useI18n } from '@/lib/i18n';
 import { formatDate, formatMoney, roundTo } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,18 +42,16 @@ interface PaymentDraft {
   notes: string;
 }
 
-const PAYMENT_METHODS: { value: PaymentMethod; label: string }[] = [
-  { value: 'cash', label: 'Cash' },
-  { value: 'bank_transfer', label: 'Bank transfer' },
-  { value: 'check', label: 'Check' },
-  { value: 'card', label: 'Card' },
-  { value: 'other', label: 'Other' },
+const PAYMENT_METHODS: PaymentMethod[] = [
+  'cash',
+  'bank_transfer',
+  'check',
+  'card',
+  'other',
 ];
 
 /**
- * Compute the next document status given the new total of payments. We never
- * downgrade a document out of a terminal state (`paid`, `cancelled`,
- * `converted`) and we never resurrect a draft.
+ * Compute the next document status given the new total of payments.
  */
 function nextStatusFor(
   current: DocumentStatus,
@@ -70,6 +69,7 @@ function nextStatusFor(
 export default function PaymentsPage() {
   const { user } = useAuth();
   const { settings } = useSettings();
+  const { t } = useI18n();
   const [loading, setLoading] = useState(true);
   const [invoices, setInvoices] = useState<DocumentRecord[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
@@ -110,7 +110,6 @@ export default function PaymentsPage() {
     if (user) load();
   }, [user]);
 
-  /** Sum of payments per invoice id. */
   const paidByDoc = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of payments) {
@@ -184,11 +183,11 @@ export default function PaymentsPage() {
     if (!user || !recordingFor) return;
     const amount = Number(draft.amount);
     if (!Number.isFinite(amount) || amount <= 0) {
-      setError('Amount must be greater than 0.');
+      setError(t('payments.err.amount'));
       return;
     }
     if (!draft.date) {
-      setError('Date is required.');
+      setError(t('payments.err.date'));
       return;
     }
     setSaving(true);
@@ -204,7 +203,6 @@ export default function PaymentsPage() {
       });
       if (insertRes.error) throw insertRes.error;
 
-      // Recompute status from the now-current set of payments.
       const previousPaid = paidByDoc.get(recordingFor.id) ?? 0;
       const newTotalPaid = previousPaid + amount;
       const next = nextStatusFor(
@@ -223,20 +221,19 @@ export default function PaymentsPage() {
       await load();
       closeRecord();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to record payment.');
+      setError(e instanceof Error ? e.message : t('payments.err.save'));
     } finally {
       setSaving(false);
     }
   }
 
   async function handleDeletePayment(p: Payment) {
-    if (!confirm('Delete this payment?')) return;
+    if (!confirm(t('payments.confirm_delete'))) return;
     const delRes = await supabase.from('payments').delete().eq('id', p.id);
     if (delRes.error) {
       alert(delRes.error.message);
       return;
     }
-    // Refresh status of the related invoice based on remaining payments.
     const inv = invoices.find((i) => i.id === p.doc_id);
     if (inv) {
       const remainingPaid = (paidByDoc.get(p.doc_id) ?? 0) - Number(p.amount);
@@ -252,10 +249,8 @@ export default function PaymentsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Payments</h1>
-          <p className="text-sm text-muted-foreground">
-            Track invoice payments and outstanding balances.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">{t('payments.title')}</h1>
+          <p className="text-sm text-muted-foreground">{t('payments.subtitle')}</p>
         </div>
       </div>
 
@@ -263,7 +258,7 @@ export default function PaymentsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-amber-600" /> Outstanding balance
+              <Wallet className="h-4 w-4 text-amber-600" /> {t('payments.kpi.outstanding')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -279,7 +274,7 @@ export default function PaymentsPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-emerald-600" /> Total received
+              <Wallet className="h-4 w-4 text-emerald-600" /> {t('payments.kpi.received')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -298,20 +293,20 @@ export default function PaymentsPage() {
         <Card>
           <CardHeader className="flex-row items-center justify-between space-y-0">
             <div className="space-y-1.5">
-              <CardTitle>Record payment</CardTitle>
+              <CardTitle>{t('payments.record')}</CardTitle>
               <CardDescription>
-                Invoice {recordingFor.number ?? recordingFor.id.slice(0, 8)} ·{' '}
+                {t('doc.invoice')} {recordingFor.number ?? recordingFor.id.slice(0, 8)} ·{' '}
                 {formatMoney(Number(recordingFor.total_ttc), settings)}
               </CardDescription>
             </div>
-            <Button variant="ghost" size="icon" onClick={closeRecord} aria-label="Close">
+            <Button variant="ghost" size="icon" onClick={closeRecord} aria-label={t('common.close')}>
               <X className="h-4 w-4" />
             </Button>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="pay-amount">Amount</Label>
+                <Label htmlFor="pay-amount">{t('common.amount')}</Label>
                 <Input
                   id="pay-amount"
                   type="number"
@@ -324,7 +319,7 @@ export default function PaymentsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pay-date">Date</Label>
+                <Label htmlFor="pay-date">{t('common.date')}</Label>
                 <Input
                   id="pay-date"
                   type="date"
@@ -333,7 +328,7 @@ export default function PaymentsPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pay-method">Method</Label>
+                <Label htmlFor="pay-method">{t('payments.col.method')}</Label>
                 <Select
                   id="pay-method"
                   value={draft.method}
@@ -342,19 +337,19 @@ export default function PaymentsPage() {
                   }
                 >
                   {PAYMENT_METHODS.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
+                    <option key={m} value={m}>
+                      {t(`payments.method.${m}`)}
                     </option>
                   ))}
                 </Select>
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <Label htmlFor="pay-notes">Notes</Label>
+                <Label htmlFor="pay-notes">{t('common.notes')}</Label>
                 <Input
                   id="pay-notes"
                   value={draft.notes}
                   onChange={(e) => setDraft({ ...draft, notes: e.target.value })}
-                  placeholder="Optional"
+                  placeholder={t('common.optional')}
                 />
               </div>
             </div>
@@ -367,10 +362,10 @@ export default function PaymentsPage() {
 
             <div className="flex justify-end gap-2">
               <Button variant="ghost" onClick={closeRecord} disabled={saving}>
-                Cancel
+                {t('common.cancel')}
               </Button>
               <Button onClick={handleSavePayment} disabled={saving}>
-                {saving ? 'Saving…' : 'Record payment'}
+                {saving ? t('common.saving') : t('payments.record')}
               </Button>
             </div>
           </CardContent>
@@ -379,21 +374,18 @@ export default function PaymentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Invoices</CardTitle>
-          <CardDescription>
-            Record payments against invoices. Paid amount and status are kept in
-            sync automatically.
-          </CardDescription>
+          <CardTitle>{t('payments.invoices_title')}</CardTitle>
+          <CardDescription>{t('payments.invoices_desc')}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search by number or client…"
-                className="pl-9"
+                placeholder={t('payments.search_placeholder')}
+                className="ps-9"
               />
             </div>
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -402,7 +394,7 @@ export default function PaymentsPage() {
                 checked={showOnlyOpen}
                 onChange={(e) => setShowOnlyOpen(e.target.checked)}
               />
-              Only outstanding
+              {t('payments.only_outstanding')}
             </label>
           </div>
 
@@ -415,25 +407,27 @@ export default function PaymentsPage() {
           ) : filteredInvoices.length === 0 ? (
             <EmptyState
               icon={Wallet}
-              title={showOnlyOpen ? 'No outstanding invoices' : 'No invoices'}
+              title={
+                showOnlyOpen ? t('payments.empty.outstanding') : t('payments.empty.none')
+              }
               description={
                 showOnlyOpen
-                  ? 'Every issued invoice is fully paid. Nice!'
-                  : 'Create an invoice from the Invoices section to track payments.'
+                  ? t('payments.empty.outstanding_desc')
+                  : t('payments.empty.none_desc')
               }
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Number</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Client</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
-                  <TableHead className="text-right">Remaining</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('doclist.col.number')}</TableHead>
+                  <TableHead>{t('common.date')}</TableHead>
+                  <TableHead>{t('doclist.col.client')}</TableHead>
+                  <TableHead>{t('common.status')}</TableHead>
+                  <TableHead className="text-end">{t('common.total')}</TableHead>
+                  <TableHead className="text-end">{t('payments.col.paid')}</TableHead>
+                  <TableHead className="text-end">{t('payments.col.remaining')}</TableHead>
+                  <TableHead className="text-end">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -458,32 +452,32 @@ export default function PaymentsPage() {
                             d.status === 'paid'
                               ? 'success'
                               : d.status === 'partially_paid'
-                              ? 'warning'
-                              : d.status === 'cancelled'
-                              ? 'destructive'
-                              : 'secondary'
+                                ? 'warning'
+                                : d.status === 'cancelled'
+                                  ? 'destructive'
+                                  : 'secondary'
                           }
                         >
-                          {d.status}
+                          {t(`status.${d.status}`)}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-end tabular-nums">
                         {formatMoney(Number(d.total_ttc), settings)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-end tabular-nums">
                         {formatMoney(paid, settings)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-end tabular-nums">
                         {formatMoney(remaining, settings)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => openRecord(d)}
                           disabled={!canPay}
                         >
-                          Record payment
+                          {t('payments.record')}
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -497,8 +491,8 @@ export default function PaymentsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent payments</CardTitle>
-          <CardDescription>All recorded payments, newest first.</CardDescription>
+          <CardTitle>{t('payments.recent')}</CardTitle>
+          <CardDescription>{t('payments.recent_desc')}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -509,19 +503,19 @@ export default function PaymentsPage() {
           ) : payments.length === 0 ? (
             <EmptyState
               icon={Wallet}
-              title="No payments recorded yet"
-              description="Record a payment from the invoices table above."
+              title={t('payments.empty.norec')}
+              description={t('payments.empty.norec_desc')}
             />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Invoice</TableHead>
-                  <TableHead>Method</TableHead>
-                  <TableHead>Notes</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t('common.date')}</TableHead>
+                  <TableHead>{t('payments.col.invoice')}</TableHead>
+                  <TableHead>{t('payments.col.method')}</TableHead>
+                  <TableHead>{t('common.notes')}</TableHead>
+                  <TableHead className="text-end">{t('common.amount')}</TableHead>
+                  <TableHead className="text-end">{t('common.actions')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -534,21 +528,20 @@ export default function PaymentsPage() {
                         {inv?.number ?? p.doc_id.slice(0, 8)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {PAYMENT_METHODS.find((m) => m.value === p.method)?.label ??
-                          p.method}
+                        {t(`payments.method.${p.method}`)}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {p.notes ?? '—'}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">
+                      <TableCell className="text-end tabular-nums">
                         {formatMoney(Number(p.amount), settings)}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-end">
                         <Button
                           size="sm"
                           variant="ghost"
                           onClick={() => handleDeletePayment(p)}
-                          aria-label="Delete payment"
+                          aria-label={t('common.delete')}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
